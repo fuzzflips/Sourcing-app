@@ -71,6 +71,12 @@ st.markdown("""
         margin-bottom: 1.2rem;
         font-weight: 500;
     }
+
+    /* Fix bullet point & text spacing on mobile */
+    .stMarkdown p, .stMarkdown li {
+        font-size: 0.95rem !important;
+        line-height: 1.5 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -192,9 +198,12 @@ if st.button("🔍 FLIP OR SKIP?", type="primary", use_container_width=True):
                     messages=[{"role": "user", "content": content_payload}]
                 )
                 
+                # Format output: Escape dollar signs so Markdown doesn't trigger LaTeX math italics
+                formatted_text = message.content[0].text.replace("$", r"\$")
+
                 st.markdown("---")
                 st.subheader("📊 FuzzFlips Analysis")
-                st.markdown(message.content[0].text)
+                st.markdown(formatted_text)
                 
             except Exception as e:
                 st.error(f"Error analyzing images: {e}")
