@@ -11,31 +11,26 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Brand Theme & Taller Viewfinder
+# 2. Custom CSS for FuzzFlips Brand Theme, Fixed Title & Taller Camera Frame
 st.markdown("""
     <style>
-    /* Compact mobile margins */
+    /* Add extra padding at the top so title isn't hidden under Streamlit nav header */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
-        padding-top: 1rem !important;
+        padding-top: 3.5rem !important;
     }
     
-    /* Force camera container & video stream to be significantly taller */
+    /* Target the camera IFRAME directly to force taller vertical viewport */
     div[data-testid="stCameraInput"] {
         width: 100% !important;
     }
     
-    div[data-testid="stCameraInput"] > div {
-        max-height: none !important;
-    }
-
-    div[data-testid="stCameraInput"] video {
+    div[data-testid="stCameraInput"] iframe {
+        height: 520px !important;
         min-height: 520px !important;
-        height: 60vh !important;
-        object-fit: cover !important;
-        border-radius: 12px;
-        border: 2px solid #008A3C;
+        border-radius: 12px !important;
+        border: 2px solid #008A3C !important;
     }
 
     /* Main CTA Button - FuzzFlips Orange */
@@ -65,8 +60,9 @@ st.markdown("""
     .fuzz-title {
         font-family: 'Impact', 'Arial Black', sans-serif;
         font-style: italic;
-        font-size: 2.8rem;
-        line-height: 1.0;
+        font-size: 2.6rem;
+        line-height: 1.1;
+        margin-top: 0.5rem;
         margin-bottom: 0px;
         text-transform: uppercase;
         letter-spacing: 1px;
@@ -75,7 +71,7 @@ st.markdown("""
     .fuzz-green { color: #008A3C; }
     
     .fuzz-subtitle {
-        font-size: 1.0rem;
+        font-size: 0.95rem;
         color: #888888;
         margin-bottom: 1.2rem;
         font-weight: 500;
