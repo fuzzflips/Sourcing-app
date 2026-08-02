@@ -150,146 +150,42 @@ if st.button("➖ $1.00", use_container_width=True, key="cost_minus"):
 cost = st.session_state.item_cost
 st.write("")
 
-# --- FULL-WIDTH HTML5 CAMERA COMPONENT WITH RELIABLE JS BRIDGE ---
+# --- NATIVE FILE INPUT FALLBACK WITH CAMERA SNAP ---
 st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
 
-camera_html = """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://unpkg.com/streamlit-component-lib@^1.4.0/dist/streamlit-component-lib.js"></script>
-    <style>
-        body {
-            margin: 0;
-            background-color: #0E1117;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            font-family: sans-serif;
-        }
-        .cam-container {
-            position: relative;
-            width: 100%;
-            max-width: 500px;
-            height: 440px;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 2px solid #008A3C;
-        }
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        canvas {
-            display: none;
-        }
-        .snap-btn {
-            margin-top: 12px;
-            width: 100%;
-            max-width: 500px;
-            background-color: #FF6600;
-            color: white;
-            border: none;
-            padding: 16px;
-            font-size: 1.2rem;
-            font-weight: 800;
-            border-radius: 12px;
-            cursor: pointer;
-            box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3);
-            -webkit-tap-highlight-color: transparent;
-        }
-        .snap-btn:active {
-            background-color: #E05500;
-            transform: scale(0.98);
-        }
-    </style>
-</head>
-<body>
-    <div class="cam-container">
-        <video id="video" autoplay playsinline muted></video>
-    </div>
-    <button class="snap-btn" id="snap">📸 TAKE PHOTO</button>
-    <canvas id="canvas"></canvas>
+uploaded_files = st.file_uploader(
+    "Take Photo",
+    type=["jpg", "jpeg", "png"],
+    accept_multiple_files=True,
+    label_visibility="collapsed"
+)
 
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const snapButton = document.getElementById('snap');
+def process_image(img_file):
+    """Auto-orient and compress photos."""
+    img = Image.open(img_file)
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    img.thumbnail((1200, 1200))
+    
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=85)
+    bytes_data = buffer.getvalue()
+    base64_str = base64.b64encode(bytes_data).decode("utf-8")
+    return img, base64_str
 
-        // Initialize Streamlit Component JS lib
-        function sendToStreamlit(data) {
-            if (window.Streamlit) {
-                window.Streamlit.setComponentValue(data);
-            } else {
-                window.parent.postMessage({
-                    type: 'streamlit:setComponentValue',
-                    value: data
-                }, '*');
-            }
-        }
-
-        if (window.Streamlit) {
-            window.Streamlit.setFrameHeight(540);
-        }
-
-        navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 1280 } },
-            audio: false
-        })
-        .then(stream => {
-            video.srcObject = stream;
-        })
-        .catch(err => {
-            console.error("Camera access error:", err);
-            alert("Camera access denied or unavailable.");
-        });
-
-        snapButton.addEventListener('click', () => {
-            canvas.width = video.videoWidth || 1280;
-            canvas.height = video.videoHeight || 1280;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const dataURL = canvas.toDataURL('image/jpeg', 0.85);
-            sendToStreamlit(dataURL);
-        });
-    </script>
-</body>
-</html>
-"""
-
-# Render custom HTML camera stream
-camera_data = components.html(camera_html, height=540)
-
-# Capture photo payload
-if camera_data:
-    try:
-        header, encoded = camera_data.split(",", 1)
-        binary_data = base64.b64decode(encoded)
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        processed_img, base64_str = process_image(uploaded_file)
+        bytes_val = uploaded_file.getvalue()
         
-        img = Image.open(io.BytesIO(binary_data))
-        img = ImageOps.exif_transpose(img)
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-        img.thumbnail((1200, 1200))
-        
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=85)
-        processed_bytes = buffer.getvalue()
-        base64_str = base64.b64encode(processed_bytes).decode("utf-8")
-        
-        if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != processed_bytes:
+        # Avoid duplicate additions
+        if not any(p["bytes"] == bytes_val for p in st.session_state.captured_photos):
             st.session_state.captured_photos.append({
-                "img": img,
+                "img": processed_img,
                 "base64": base64_str,
-                "bytes": processed_bytes
+                "bytes": bytes_val
             })
-            st.rerun()
-    except Exception as e:
-        pass
 
 # Display Gallery of Snapped Photos
 if st.session_state.captured_photos:
