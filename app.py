@@ -123,14 +123,13 @@ def process_base64_image(raw_input):
     ts = None
     
     if isinstance(raw_input, dict):
-        val = raw_input.get("value", {})
-        if isinstance(val, dict):
-            b64_str = str(val.get("image", ""))
-            ts = val.get("ts", None)
-        elif isinstance(val, str):
-            b64_str = val
+        b64_str = str(raw_input.get("image", ""))
+        ts = raw_input.get("ts", None)
     elif isinstance(raw_input, str):
         b64_str = raw_input
+
+    if not b64_str:
+        return None, None, None, None
 
     # Strip data URL prefix if present
     if "base64," in b64_str:
@@ -165,6 +164,7 @@ custom_camera_html = """
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -235,8 +235,8 @@ custom_camera_html = """
     <div class="cam-box">
         <video id="webcam" autoplay playsinline muted></video>
         <div class="controls">
-            <button class="snap-btn" onclick="snap()">📷 TAKE PHOTO</button>
-            <button class="flip-btn" onclick="toggleCam()">🔄</button>
+            <button class="snap-btn" type="button" id="snapBtn">📷 TAKE PHOTO</button>
+            <button class="flip-btn" type="button" id="flipBtn">🔄</button>
         </div>
         <canvas id="canvas" style="display:none;"></canvas>
     </div>
@@ -265,15 +265,15 @@ custom_camera_html = """
             }
         }
 
-        function toggleCam() {
+        document.getElementById('flipBtn').addEventListener('click', () => {
             useFront = !useFront;
             startCamera();
-        }
+        });
 
-        function snap() {
+        document.getElementById('snapBtn').addEventListener('click', () => {
             const video = document.getElementById('webcam');
             const canvas = document.getElementById('canvas');
-            if (!video.videoWidth) return;
+            if (!video || !video.videoWidth) return;
             
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -282,14 +282,14 @@ custom_camera_html = """
             
             const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
             
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                value: {
+            // Send payload to Streamlit natively via component JS SDK
+            if (window.Streamlit) {
+                window.Streamlit.setComponentValue({
                     image: dataUrl,
                     ts: Date.now()
-                }
-            }, '*');
-        }
+                });
+            }
+        });
 
         startCamera();
     </script>
@@ -305,8 +305,7 @@ if camera_data:
     try:
         processed_img, clean_b64, raw_bytes, ts = process_base64_image(camera_data)
         
-        # Prevent double logging on rerenders
-        if ts and ts != st.session_state.last_processed_ts:
+        if processed_img and ts and ts != st.session_state.last_processed_ts:
             st.session_state.last_processed_ts = ts
             st.session_state.captured_photos.append({
                 "img": processed_img,
@@ -315,7 +314,6 @@ if camera_data:
             })
             st.rerun()
     except Exception as e:
-        # Prevent UI crash and ignore empty frames
         pass
 
 # 3. Gallery Preview & Photo Counter
