@@ -3,6 +3,7 @@ import io
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 1. Page Config
 st.set_page_config(
@@ -11,33 +12,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Brand Theme & Full-Width Viewfinder
+# 2. Custom CSS for FuzzFlips Brand Theme
 st.markdown("""
     <style>
-    /* Generous top padding to clear Streamlit's invisible nav header completely */
+    /* Generous top padding to clear Streamlit's header navigation */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
-        padding-top: 4.5rem !important;
-    }
-    
-    /* Force camera input to be 100% full width */
-    div[data-testid="stCameraInput"] {
-        width: 100% !important;
-    }
-
-    div[data-testid="stCameraInput"] > div {
-        width: 100% !important;
-        max-height: none !important;
-    }
-
-    /* Set a clean height for the iframe wrapper */
-    div[data-testid="stCameraInput"] iframe {
-        width: 100% !important;
-        height: 420px !important;
-        min-height: 420px !important;
-        border-radius: 12px !important;
-        border: 2px solid #008A3C !important;
+        padding-top: 4.2rem !important;
     }
 
     /* Main CTA Button - FuzzFlips Orange */
@@ -48,7 +30,7 @@ st.markdown("""
         font-weight: 800 !important;
         font-size: 1.2rem !important;
         border-radius: 10px !important;
-        padding: 0.6rem 1rem !important;
+        padding: 0.7rem 1rem !important;
         box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3) !important;
     }
     div.stButton > button[kind="primary"]:hover {
@@ -115,11 +97,45 @@ if "captured_photos" not in st.session_state:
 # Input for Purchase Cost
 cost = st.number_input("Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5)
 
-# Camera section text above camera (prevents side-by-side column compression)
+def process_image(img_file):
+    """Auto-orient and compress photos."""
+    img = Image.open(img_file)
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    img.thumbnail((1200, 1200))
+    
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=85)
+    bytes_data = buffer.getvalue()
+    base64_str = base64.b64encode(bytes_data).decode("utf-8")
+    return img, base64_str
+
+# Native Camera Section
 st.markdown("**Snap photos of item, tags, or flaws:**")
 
-# In-app live camera feed (Pass empty label string "")
-camera_photo = st.camera_input("")
+# Native camera widget via Streamlit camera component with overridden view container
+camera_photo = st.camera_input("", key="main_camera")
+
+# Apply target CSS directly to force stream container expand
+st.markdown("""
+    <style>
+    /* Direct override on camera element iframe and video wrapper */
+    [data-testid="stCameraInput"] {
+        width: 100% !important;
+    }
+    [data-testid="stCameraInput"] > div {
+        width: 100% !important;
+    }
+    [data-testid="stCameraInput"] iframe {
+        width: 100% !important;
+        height: 480px !important;
+        min-height: 480px !important;
+        border-radius: 12px !important;
+        border: 2px solid #008A3C !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # Add snapped photos to gallery
 if camera_photo:
