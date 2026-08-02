@@ -1,5 +1,6 @@
 import base64
 import io
+import time
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
@@ -12,10 +13,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS & Header Layout
+# 2. Custom CSS & Styling
 st.markdown("""
     <style>
-    /* Clear top navigation bar */
+    /* Safe top margin clearing Streamlit header */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -84,14 +85,17 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Session State for Photos & Cost
+# Session State
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
 if "cost_val" not in st.session_state:
     st.session_state.cost_val = 3.0
 
-# 1. Purchase Cost Section with Quick Buttons
+if "last_processed_ts" not in st.session_state:
+    st.session_state.last_processed_ts = None
+
+# 1. Purchase Cost Section with Quick Adjust Buttons
 st.markdown("**Purchase Cost ($):**")
 st.session_state.cost_val = st.number_input(
     "Purchase Cost ($):", 
@@ -114,14 +118,31 @@ with btn_col2:
 st.write("")
 
 def process_base64_image(raw_input):
-    """Safely extract base64 data regardless of input structure."""
-    if isinstance(raw_input, dict):
-        raw_input = raw_input.get("value", "")
+    """Safely decode base64 image strings with auto-padding."""
+    b64_str = ""
+    ts = None
     
-    b64_str = str(raw_input)
+    if isinstance(raw_input, dict):
+        # Extract payload from component object
+        val = raw_input.get("value", {})
+        if isinstance(val, dict):
+            b64_str = val.get("image", "")
+            ts = val.get("ts", None)
+        elif isinstance(val, str):
+            b64_str = val
+    elif isinstance(raw_input, str):
+        b64_str = raw_input
+
+    # Strip data URL scheme prefix if present
     if "," in b64_str:
         b64_str = b64_str.split(",")[1]
     
+    # Strip whitespace & fix Base64 missing trailing padding '='
+    b64_str = b64_str.strip()
+    missing_padding = len(b64_str) % 4
+    if missing_padding:
+        b64_str += "=" * (4 - missing_padding)
+
     img_bytes = base64.b64decode(b64_str)
     img = Image.open(io.BytesIO(img_bytes))
     img = ImageOps.exif_transpose(img)
@@ -133,9 +154,9 @@ def process_base64_image(raw_input):
     img.save(buffer, format="JPEG", quality=85)
     bytes_data = buffer.getvalue()
     clean_b64 = base64.b64encode(bytes_data).decode("utf-8")
-    return img, clean_b64, bytes_data
+    return img, clean_b64, bytes_data, ts
 
-# 2. Live Inline Custom Viewfinder
+# 2. Live Custom HTML5 Viewfinder
 st.markdown("**Snap photos of item, tags, or flaws:**")
 
 custom_camera_html = """
@@ -260,10 +281,13 @@ custom_camera_html = """
             
             const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
             
-            // Send back to Streamlit
+            // Post payload with unique timestamp to trigger Streamlit rerun
             window.parent.postMessage({
                 type: 'streamlit:setComponentValue',
-                value: dataUrl
+                value: {
+                    image: dataUrl,
+                    ts: Date.now()
+                }
             }, '*');
         }
 
@@ -273,16 +297,17 @@ custom_camera_html = """
 </html>
 """
 
-# Render custom HTML5 component
+# Render custom component
 camera_data = components.html(custom_camera_html, height=440)
 
 # Process photo when snapped
 if camera_data:
     try:
-        processed_img, clean_b64, raw_bytes = process_base64_image(camera_data)
+        processed_img, clean_b64, raw_bytes, ts = process_base64_image(camera_data)
         
-        # Avoid duplicate additions
-        if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != raw_bytes:
+        # Only append if this timestamp hasn't been processed yet
+        if ts and ts != st.session_state.last_processed_ts:
+            st.session_state.last_processed_ts = ts
             st.session_state.captured_photos.append({
                 "img": processed_img,
                 "base64": clean_b64,
@@ -292,7 +317,7 @@ if camera_data:
     except Exception as e:
         st.error(f"Error processing photo: {e}")
 
-# 3. Photo Gallery Preview & Counter
+# 3. Gallery Preview & Photo Counter
 if st.session_state.captured_photos:
     st.markdown(f"**📸 Captured Photos ({len(st.session_state.captured_photos)}):**")
     
@@ -303,6 +328,7 @@ if st.session_state.captured_photos:
             
     if st.button("🗑️ Clear All Photos", use_container_width=True):
         st.session_state.captured_photos = []
+        st.session_state.last_processed_ts = None
         st.rerun()
 
 st.write("")
