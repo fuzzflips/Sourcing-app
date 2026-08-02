@@ -11,10 +11,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Complete Custom Styling (FuzzFlips Brand Theme + Full Width Camera)
+# 2. FuzzFlips Brand CSS & Clear Public Layout
 st.markdown("""
     <style>
-    /* Safe top margin clearing Streamlit's top nav header */
+    /* Clear top margin clearing Streamlit's header completely */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -42,23 +42,22 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* Target Camera Input Container to Stretch Edge to Edge */
-    div[data-testid="stCameraInput"] {
+    /* Force Camera Input Frame to Stretch 100% Mobile Width */
+    [data-testid="stCameraInput"] {
         width: 100% !important;
+        max-width: 100% !important;
+    }
+    
+    [data-testid="stCameraInput"] > div {
+        width: 100% !important;
+    }
+
+    [data-testid="stCameraInput"] video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
-        overflow: hidden !important;
-        background-color: #0d1117 !important;
-    }
-
-    div[data-testid="stCameraInput"] > div {
-        width: 100% !important;
-    }
-
-    /* Stretch the inner video frame using a CSS transform zoom trick */
-    div[data-testid="stCameraInput"] iframe {
-        width: 100% !important;
-        height: 420px !important;
     }
 
     /* Primary CTA Button (FuzzFlips Orange) */
@@ -76,7 +75,7 @@ st.markdown("""
         background-color: #E05500 !important;
     }
 
-    /* Secondary Quick-Adjust & Action Buttons */
+    /* Secondary Quick Buttons */
     div.stButton > button[kind="secondary"] {
         border: 1px solid #008A3C !important;
         color: #008A3C !important;
@@ -102,7 +101,7 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Session State Initializations
+# Session State
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
@@ -131,9 +130,9 @@ with btn_col2:
 
 st.write("")
 
-def process_image(img_file):
-    """Auto-orient and compress photo directly."""
-    img = Image.open(img_file)
+def process_image_file(file_obj):
+    """Auto-orient, compress JPEG, and convert image file for Claude payload."""
+    img = Image.open(file_obj)
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
@@ -142,24 +141,31 @@ def process_image(img_file):
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=85)
     bytes_data = buffer.getvalue()
-    base64_str = base64.b64encode(bytes_data).decode("utf-8")
-    return img, base64_str
+    clean_b64 = base64.b64encode(bytes_data).decode("utf-8")
+    return img, clean_b64, bytes_data
 
-# 2. Camera Input Section (Native Streamlit Camera Input)
+# 2. Rapid Multi-Photo Capture (Mobile Camera Trigger)
 st.markdown("**Snap photos of item, tags, or flaws:**")
-camera_photo = st.camera_input("", label_visibility="collapsed", key="live_cam")
 
-# Add snapped photos to gallery
-if camera_photo:
-    processed_img, base64_str = process_image(camera_photo)
-    
-    # Check duplicate entry on rerun
-    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
-        st.session_state.captured_photos.append({
-            "img": processed_img,
-            "base64": base64_str,
-            "bytes": camera_photo.getvalue()
-        })
+# File uploader triggers full-screen native mobile camera directly on tap
+uploaded_files = st.file_uploader(
+    "Snap Photo(s)", 
+    type=["jpg", "jpeg", "png", "webp"], 
+    accept_multiple_files=True,
+    label_visibility="collapsed"
+)
+
+if uploaded_files:
+    for file in uploaded_files:
+        file_bytes = file.getvalue()
+        # Prevent adding duplicates on stream reruns
+        if not any(item["bytes"] == file_bytes for item in st.session_state.captured_photos):
+            processed_img, clean_b64, raw_bytes = process_image_file(file)
+            st.session_state.captured_photos.append({
+                "img": processed_img,
+                "base64": clean_b64,
+                "bytes": raw_bytes
+            })
 
 # 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
@@ -227,7 +233,7 @@ if st.button("🔍 FLIP OR SKIP?", type="primary", use_container_width=True):
                     messages=[{"role": "user", "content": content_payload}]
                 )
                 
-                # Escape dollar signs to avoid Streamlit LaTeX italicization bug
+                # Escape dollar signs to prevent Streamlit LaTeX rendering issues
                 formatted_text = message.content[0].text.replace("$", r"\$")
 
                 st.markdown("---")
