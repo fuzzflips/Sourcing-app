@@ -1,99 +1,121 @@
+import base64
+import anthropic
 import streamlit as st
-st.set_page_config(layout="wide")
+
+# 1. Expand layout to wide mode
+st.set_page_config(
+    page_title="Sourcing Companion", page_icon="🏷️", layout="wide"
+)
+
+# 2. Add custom CSS for phone formatting and padded mobile view
 st.markdown(
     """
     <style>
-    /* Remove mobile side margins */
     .block-container {
-        padding-left: 0.2rem !important;
-        padding-right: 0.2rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
         padding-top: 1rem !important;
-    }
-
-    /* Force the camera container and video stream to fill maximum height */
-    div[data-testid="stCameraInput"] {
-        width: 100% !important;
-    }
-    div[data-testid="stCameraInput"] video {
-        min-height: 420px !important;
-        object-fit: cover !important;
     }
     </style>
 """,
     unsafe_allow_html=True,
 )
-import anthropic
-import base64
-
-st.set_page_config(page_title="Sourcing Companion", page_icon="🏷️", layout="centered")
 
 st.title("🏷️ Sourcing Companion")
-st.caption("AI-Powered Thrift Valuation & Buy/Pass Advisor")
+st.write("Snap item & tag photos to check resale value and get instant recommendations.")
 
-# Get API Key securely from Streamlit secrets or user input
-api_key = st.secrets.get("ANTHROPIC_API_KEY") if "ANTHROPIC_API_KEY" in st.secrets else None
+# Check for API key in secrets
+if "ANTHROPIC_API_KEY" not in st.secrets:
+    st.error("Please add your ANTHROPIC_API_KEY to Streamlit Secrets.")
+    st.stop()
 
-if not api_key:
-    api_key = st.text_input("Enter Anthropic API Key:", type="password")
+# Initialize Anthropic Client
+client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-if api_key:
-    client = anthropic.Anthropic(api_key=api_key)
+# Input for Purchase Cost
+cost = st.number_input(
+    "Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5
+)
 
-    # Inputs for the item
-    cost = st.number_input("Purchase Cost ($):", min_value=0.0, value=3.0, step=0.50)
-    
-    # Mobile Camera Input
-    uploaded_file = st.camera_input("Take a photo of the item or tag")
-    
-    if not uploaded_file:
-        uploaded_file = st.file_uploader("Or upload from gallery", type=["jpg", "png", "jpeg"])
+# Multi-photo upload input
+uploaded_files = st.file_uploader(
+    "Take/upload photos of item & tags",
+    type=["jpg", "png", "jpeg", "webp"],
+    accept_multiple_files=True,
+    help="On mobile, tap to take multiple photos using your camera or gallery.",
+)
 
-    if uploaded_file and st.button("🔍 Analyze Item", type="primary"):
-        with st.spinner("Analyzing item & estimating market value..."):
-            # Read and encode image
-            bytes_data = uploaded_file.getvalue()
-            base64_image = base64.b64encode(bytes_data).decode('utf-8')
-            media_type = uploaded_file.type if uploaded_file.type in ["image/jpeg", "image/png"] else "image/jpeg"
+# Display preview thumbnails of captured photos
+if uploaded_files:
+    cols = st.columns(min(len(uploaded_files), 4))
+    for idx, uploaded_file in enumerate(uploaded_files):
+        with cols[idx % len(cols)]:
+            st.image(
+                uploaded_file,
+                caption=f"Photo {idx + 1}",
+                use_container_width=True,
+            )
 
-            prompt = f"""
-            Act as an expert secondhand reseller. Analyze this image of an item I am considering buying for sourcing.
-            Purchase Price / Cost of Goods (COGS): ${cost:.2f}
-
-            Provide a concise, highly structured mobile-friendly response with these sections:
-
-            1. **Item Identification:** Brand, exact item/model name, era/vintage status, and category.
-            2. **Condition Assessment:** Visible flaws, wear areas to inspect carefully, or signs of authenticity/counterfeiting.
-            3. **Resale Valuation & Price Range:**
-               - Estimated eBay Pre-Owned Fair Condition Price
-               - Estimated eBay Pre-Owned Good/Excellent Condition Price
-            4. **Recommendation:**
-               - **BUY / PASS Decision:** (Clear bold recommendation based on COGS of ${cost:.2f} vs estimated net profit after fees/shipping)
-               - **Estimated Net Profit:** ($ range)
-            5. **Top eBay Search Keywords:** 5-8 high-converting keywords to verify sold comps manually.
-            """
-
+# Analyze Button
+if st.button("🔍 Analyze Item", type="primary", use_container_width=True):
+    if not uploaded_files:
+        st.warning("Please capture or upload at least one photo first.")
+    else:
+        with st.spinner("Analyzing photos with Claude Vision..."):
             try:
-                response = client.messages.create(
-                    model="claude-sonnet-5",
-                    max_tokens=800,
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": base64_image,
-                                },
+                # Build content array with all uploaded images
+                content_payload = []
+
+                for uploaded_file in uploaded_files:
+                    bytes_data = uploaded_file.getvalue()
+                    base64_image = base64.b64encode(bytes_data).decode("utf-8")
+
+                    # Map media type for API
+                    mime_type = uploaded_file.type
+                    if mime_type not in [
+                        "image/jpeg",
+                        "image/png",
+                        "image/webp",
+                        "image/gif",
+                    ]:
+                        mime_type = "image/jpeg"
+
+                    content_payload.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mime_type,
+                                "data": base64_image,
                             },
-                            {"type": "text", "text": prompt}
-                        ],
-                    }]
-                )
+                        }
+                    )
+
+                # Append system prompt instructions as the text portion
+                prompt_text = f"""
+                Analyze the provided photo(s) of this resale item.
+                The item purchase cost is ${cost:.2f}.
                 
+                Please provide:
+                1. **Item Identification**: Name, brand, approximate age/era, vintage markers (if any), and notable features/tags.
+                2. **Estimated Resale Value**: Expected price range on platforms like eBay, Poshmark, or Mercari.
+                3. **Estimated Profit**: Net profit estimate after purchase cost (${cost:.2f}) and typical platform/shipping fees (~20%).
+                4. **Buy / Pass Recommendation**: A clear BUY, PASS, or RISKY decision with 2-3 sentence justification.
+                """
+
+                content_payload.append({"type": "text", "text": prompt_text})
+
+                # Call Anthropic API
+                message = client.messages.create(
+                    model="claude-3-5-sonnet-latest",
+                    max_tokens=1000,
+                    messages=[{"role": "user", "content": content_payload}],
+                )
+
+                # Display Results
                 st.markdown("---")
-                st.markdown(response.content[0].text)
+                st.subheader("📊 Resale Analysis")
+                st.markdown(message.content[0].text)
 
             except Exception as e:
                 st.error(f"Error analyzing image: {e}")
