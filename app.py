@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Mobile Layout & Full-Width Camera Viewfinder Styling
+# 2. CSS Override to bypass Streamlit's camera height limits
 st.markdown("""
     <style>
     /* Padding to clear Streamlit's top header bar */
@@ -21,29 +21,23 @@ st.markdown("""
         padding-top: 3.2rem !important;
     }
     
-    /* Target the camera container & force full width + height */
-    div[data-testid="stCameraInput"] {
-        width: 100% !important;
-    }
-    
-    div[data-testid="stCameraInput"] > div {
+    /* Force camera component container to take full height */
+    [data-testid="stCameraInput"] {
         width: 100% !important;
     }
 
-    div[data-testid="stCameraInput"] iframe {
+    [data-testid="stCameraInput"] > div {
         width: 100% !important;
-        height: 480px !important;
-        min-height: 480px !important;
+        max-height: none !important;
+    }
+
+    /* Target iframe directly with scale override */
+    [data-testid="stCameraInput"] iframe {
+        width: 100% !important;
+        height: 65vh !important;
+        min-height: 550px !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
-    }
-
-    /* Force raw HTML video element inside camera to fill container */
-    div[data-testid="stCameraInput"] video {
-        width: 100% !important;
-        height: 100% !important;
-        min-height: 450px !important;
-        object-fit: cover !important;
     }
 
     /* Main CTA Button - FuzzFlips Orange */
