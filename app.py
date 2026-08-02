@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Sourcing Companion", page_icon="🏷️", layout="wide"
 )
 
-# 2. Add custom CSS for phone formatting and mobile view
+# 2. Mobile styling CSS
 st.markdown(
     """
     <style>
@@ -18,15 +18,16 @@ st.markdown(
         padding-right: 0.5rem !important;
         padding-top: 1rem !important;
     }
+    div[data-testid="stCameraInput"] video {
+        min-height: 380px !important;
+        object-fit: cover !important;
+    }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
 st.title("🏷️ Sourcing Companion")
-st.write(
-    "Snap item & tag photos to check resale value and get instant recommendations."
-)
 
 # Check for API key in secrets
 if "ANTHROPIC_API_KEY" not in st.secrets:
@@ -36,82 +37,92 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 # Initialize Anthropic Client
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
+# Initialize session state gallery for photos
+if "captured_photos" not in st.session_state:
+    st.session_state.captured_photos = []
+
 # Input for Purchase Cost
 cost = st.number_input(
     "Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5
 )
 
-# Multi-photo upload input
-uploaded_files = st.file_uploader(
-    "Take/upload photos of item & tags",
-    type=["jpg", "png", "jpeg", "webp"],
-    accept_multiple_files=True,
-    help="On mobile, tap to select or take multiple photos.",
-)
 
-
-def process_image(uploaded_file):
-    """Fix EXIF orientation and compress image for API speed."""
-    img = Image.open(uploaded_file)
-
-    # Automatically rotate photo right-side up based on phone EXIF metadata
+def process_image(img_file):
+    """Auto-orient and compress photos."""
+    img = Image.open(img_file)
     img = ImageOps.exif_transpose(img)
-
-    # Convert to RGB if in RGBA mode
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-
-    # Resize long edge to max 1200px to save bandwidth and speed up API response
     img.thumbnail((1200, 1200))
 
-    # Save to buffer
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=85)
     bytes_data = buffer.getvalue()
-
     base64_str = base64.b64encode(bytes_data).decode("utf-8")
     return img, base64_str
 
 
-# Display upright preview thumbnails
-if uploaded_files:
-    cols = st.columns(min(len(uploaded_files), 4))
-    processed_images = []
+# In-app live camera feed
+camera_photo = st.camera_input("Take a photo of item or tag")
 
-    for idx, uploaded_file in enumerate(uploaded_files):
-        processed_img, base64_str = process_image(uploaded_file)
-        processed_images.append((processed_img, base64_str))
+# Automatically add snapped photos to session state gallery
+if camera_photo:
+    processed_img, base64_str = process_image(camera_photo)
 
+    # Avoid duplicate additions from Streamlit rerenders
+    if (
+        not st.session_state.captured_photos
+        or st.session_state.captured_photos[-1]["bytes"]
+        != camera_photo.getvalue()
+    ):
+        st.session_state.captured_photos.append(
+            {
+                "img": processed_img,
+                "base64": base64_str,
+                "bytes": camera_photo.getvalue(),
+            }
+        )
+
+# Display Gallery of Snapped Photos
+if st.session_state.captured_photos:
+    st.write(f"**Photos Snapped ({len(st.session_state.captured_photos)}):**")
+    cols = st.columns(min(len(st.session_state.captured_photos), 4))
+
+    for idx, photo_data in enumerate(st.session_state.captured_photos):
         with cols[idx % len(cols)]:
             st.image(
-                processed_img,
+                photo_data["img"],
                 caption=f"Photo {idx + 1}",
                 use_container_width=True,
             )
 
+    if st.button("🗑️ Clear All Photos", use_container_width=True):
+        st.session_state.captured_photos = []
+        st.rerun()
+
 # Analyze Button
-if st.button("🔍 Analyze Item", type="primary", use_container_width=True):
-    if not uploaded_files:
-        st.warning("Please capture or upload at least one photo first.")
+if st.button(
+    "🔍 Analyze All Photos", type="primary", use_container_width=True
+):
+    if not st.session_state.captured_photos:
+        st.warning("Please snap at least one photo first.")
     else:
         with st.spinner("Analyzing photos with Claude Vision..."):
             try:
-                # Build content array with all processed images
                 content_payload = []
 
-                for _, base64_str in processed_images:
+                for item in st.session_state.captured_photos:
                     content_payload.append(
                         {
                             "type": "image",
                             "source": {
                                 "type": "base64",
                                 "media_type": "image/jpeg",
-                                "data": base64_str,
+                                "data": item["base64"],
                             },
                         }
                     )
 
-                # Append prompt instructions
                 prompt_text = f"""
                 Analyze the provided photo(s) of this resale item.
                 The item purchase cost is ${cost:.2f}.
@@ -125,17 +136,15 @@ if st.button("🔍 Analyze Item", type="primary", use_container_width=True):
 
                 content_payload.append({"type": "text", "text": prompt_text})
 
-                # Call Anthropic API
                 message = client.messages.create(
                     model="claude-sonnet-5",
                     max_tokens=1000,
                     messages=[{"role": "user", "content": content_payload}],
                 )
 
-                # Display Results
                 st.markdown("---")
                 st.subheader("📊 Resale Analysis")
                 st.markdown(message.content[0].text)
 
             except Exception as e:
-                st.error(f"Error analyzing image: {e}")
+                st.error(f"Error analyzing images: {e}")
