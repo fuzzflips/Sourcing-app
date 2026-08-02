@@ -11,13 +11,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. CSS Styling with Forced Camera Horizontal Scale
+# 2. FuzzFlips Brand CSS & Clean Mobile Layout
 st.markdown("""
     <style>
-    /* Safe top margin clearing Streamlit's header completely */
+    /* Clean top margin clearing Streamlit's header completely */
     .block-container {
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
         padding-top: 4.8rem !important;
     }
     
@@ -42,23 +42,12 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* Force Camera Viewfinder Full Width via Scale Matrix */
-    div[data-testid="stCameraInput"] {
-        width: 100% !important;
+    /* Style the Camera / File Uploader Box */
+    div[data-testid="stFileUploader"] {
+        border: 2px dashed #008A3C !important;
         border-radius: 12px !important;
-        border: 2px solid #008A3C !important;
-        overflow: hidden !important;
-    }
-
-    div[data-testid="stCameraInput"] > div {
-        width: 100% !important;
-    }
-
-    /* Target iframe and force video element to scale out horizontally */
-    div[data-testid="stCameraInput"] iframe {
-        width: 140% !important;
-        margin-left: -20% !important;
-        height: 380px !important;
+        padding: 0.5rem !important;
+        background-color: rgba(0, 138, 60, 0.03) !important;
     }
 
     /* Primary CTA Button (FuzzFlips Orange) */
@@ -102,14 +91,14 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Session State for Photo List & Cost
+# Session State Setup
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
 if "cost_val" not in st.session_state:
     st.session_state.cost_val = 3.0
 
-# 1. Purchase Cost Section
+# 1. Purchase Cost Input & Quick Increments
 st.markdown("**Purchase Cost ($):**")
 st.session_state.cost_val = st.number_input(
     "Purchase Cost ($):", 
@@ -145,27 +134,32 @@ def process_image(img_file):
     base64_str = base64.b64encode(bytes_data).decode("utf-8")
     return img, base64_str
 
-# 2. Camera Input Section
+# 2. Native Full-Screen Mobile Camera Trigger
 st.markdown("**Snap photos of item, tags, or flaws:**")
-camera_photo = st.camera_input("", label_visibility="collapsed")
 
-# Store captured photos in rapid-fire session list
-if camera_photo:
-    processed_img, base64_str = process_image(camera_photo)
-    
-    # Avoid duplicate additions from Streamlit automatic rerenders
-    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
-        st.session_state.captured_photos.append({
-            "img": processed_img,
-            "base64": base64_str,
-            "bytes": camera_photo.getvalue()
-        })
+uploaded_files = st.file_uploader(
+    "📷 Tap to open phone camera or photos", 
+    type=["jpg", "jpeg", "png", "heic"], 
+    accept_multiple_files=True,
+    label_visibility="collapsed"
+)
+
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        bytes_val = uploaded_file.getvalue()
+        # Prevent duplicate uploads
+        if not any(p["bytes"] == bytes_val for p in st.session_state.captured_photos):
+            processed_img, base64_str = process_image(uploaded_file)
+            st.session_state.captured_photos.append({
+                "img": processed_img,
+                "base64": base64_str,
+                "bytes": bytes_val
+            })
 
 # 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
     st.markdown(f"**📸 Captured Photos ({len(st.session_state.captured_photos)}):**")
     
-    # Display thumbnails in a 4-column grid
     cols = st.columns(min(len(st.session_state.captured_photos), 4))
     for idx, photo_data in enumerate(st.session_state.captured_photos):
         with cols[idx % 4]:
