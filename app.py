@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Aggressive CSS targeted specifically at Streamlit's internal camera DOM structure
+# 2. Custom CSS for FuzzFlips Theme
 st.markdown("""
     <style>
     /* Generous top padding to clear Streamlit's top header bar */
@@ -21,22 +21,9 @@ st.markdown("""
         padding-top: 4.2rem !important;
     }
 
-    /* Force Camera Input Container to fill 100% width */
-    div[data-testid="stCameraInput"],
-    div[data-testid="stCameraInput"] > div,
-    div[data-testid="stCameraInput"] > div > div,
-    div[data-testid="stCameraInput"] iframe {
+    /* Target camera container */
+    div[data-testid="stCameraInput"] {
         width: 100% !important;
-        max-width: 100% !important;
-        min-width: 100% !important;
-    }
-
-    /* Set fixed height on iframe container */
-    div[data-testid="stCameraInput"] iframe {
-        height: 480px !important;
-        min-height: 480px !important;
-        border-radius: 12px !important;
-        border: 2px solid #008A3C !important;
     }
 
     /* Main CTA Button - FuzzFlips Orange */
@@ -107,9 +94,15 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 # Initialize Anthropic Client
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Initialize session state gallery for photos
+# Initialize session states
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
+
+if "camera_key" not in st.session_state:
+    st.session_state.camera_key = 0
+
+if "last_processed_bytes" not in st.session_state:
+    st.session_state.last_processed_bytes = None
 
 # Input for Purchase Cost
 cost = st.number_input("Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5)
@@ -128,23 +121,25 @@ def process_image(img_file):
     base64_str = base64.b64encode(bytes_data).decode("utf-8")
     return img, base64_str
 
-# Clean Section Header
+# Label
 st.markdown("**Snap photos of item, tags, or flaws:**")
 
-# Single Native Streamlit Camera Input (Keyed & Empty Label String)
-camera_photo = st.camera_input("", key="fuzz_camera")
+# Camera with dynamic state key (allows hard reset on clear)
+camera_photo = st.camera_input("", key=f"fuzz_camera_{st.session_state.camera_key}")
 
-# Add snapped photos to gallery
-if camera_photo:
-    processed_img, base64_str = process_image(camera_photo)
+# Rapid-fire gallery logic
+if camera_photo is not None:
+    current_bytes = camera_photo.getvalue()
     
-    # Check if photo is already added to prevent infinite rerenders
-    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
+    # Only append if this exact photo hasn't been added yet
+    if current_bytes != st.session_state.last_processed_bytes:
+        processed_img, base64_str = process_image(camera_photo)
         st.session_state.captured_photos.append({
             "img": processed_img,
             "base64": base64_str,
-            "bytes": camera_photo.getvalue()
+            "bytes": current_bytes
         })
+        st.session_state.last_processed_bytes = current_bytes
 
 # Display Gallery of Snapped Photos
 if st.session_state.captured_photos:
@@ -157,6 +152,8 @@ if st.session_state.captured_photos:
             
     if st.button("🗑️ Clear All Photos", use_container_width=True):
         st.session_state.captured_photos = []
+        st.session_state.last_processed_bytes = None
+        st.session_state.camera_key += 1  # Increments key to force camera to wipe state!
         st.rerun()
 
 st.write("")
