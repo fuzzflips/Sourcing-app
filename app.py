@@ -4,30 +4,83 @@ import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
 
-# 1. Expand layout to wide mode
+# 1. Page Config
 st.set_page_config(
-    page_title="Sourcing Companion", page_icon="🏷️", layout="wide"
+    page_title="Flip or Skip | FuzzFlips",
+    page_icon="💸",
+    layout="wide"
 )
 
-# 2. Mobile styling CSS
-st.markdown(
-    """
+# 2. Custom CSS for FuzzFlips Brand Theme (Orange #FF6600 & Green #008A3C)
+st.markdown("""
     <style>
+    /* Compact mobile margins */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         padding-top: 1rem !important;
     }
+    
+    /* Camera height & fitting */
     div[data-testid="stCameraInput"] video {
         min-height: 380px !important;
         object-fit: cover !important;
+        border-radius: 12px;
+        border: 2px solid #008A3C;
+    }
+
+    /* Main CTA Button - FuzzFlips Orange */
+    div.stButton > button[kind="primary"] {
+        background-color: #FF6600 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: 800 !important;
+        font-size: 1.2rem !important;
+        border-radius: 10px !important;
+        padding: 0.6rem 1rem !important;
+        box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3) !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #E05500 !important;
+    }
+
+    /* Secondary Buttons */
+    div.stButton > button[kind="secondary"] {
+        border: 2px solid #008A3C !important;
+        color: #008A3C !important;
+        font-weight: 700 !important;
+        border-radius: 10px !important;
+    }
+
+    /* Branded Header Title */
+    .fuzz-title {
+        font-family: 'Impact', 'Arial Black', sans-serif;
+        font-style: italic;
+        font-size: 2.8rem;
+        line-height: 1.0;
+        margin-bottom: 0px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .fuzz-orange { color: #FF6600; }
+    .fuzz-green { color: #008A3C; }
+    
+    .fuzz-subtitle {
+        font-size: 1.0rem;
+        color: #888888;
+        margin-bottom: 1.2rem;
+        font-weight: 500;
     }
     </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-st.title("🏷️ Sourcing Companion")
+# App Header
+st.markdown("""
+    <div class="fuzz-title">
+        <span class="fuzz-orange">FLIP</span> <span class="fuzz-green">OR SKIP$</span>
+    </div>
+    <div class="fuzz-subtitle">Powered by FuzzFlips AI Sourcing Companion</div>
+""", unsafe_allow_html=True)
 
 # Check for API key in secrets
 if "ANTHROPIC_API_KEY" not in st.secrets:
@@ -42,10 +95,7 @@ if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
 # Input for Purchase Cost
-cost = st.number_input(
-    "Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5
-)
-
+cost = st.number_input("Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5)
 
 def process_image(img_file):
     """Auto-orient and compress photos."""
@@ -54,97 +104,97 @@ def process_image(img_file):
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     img.thumbnail((1200, 1200))
-
+    
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=85)
     bytes_data = buffer.getvalue()
     base64_str = base64.b64encode(bytes_data).decode("utf-8")
     return img, base64_str
 
-
 # In-app live camera feed
-camera_photo = st.camera_input("Take a photo of item or tag")
+camera_photo = st.camera_input("Snap photos of item, tags, or flaws")
 
-# Automatically add snapped photos to session state gallery
+# Add snapped photos to gallery
 if camera_photo:
     processed_img, base64_str = process_image(camera_photo)
-
+    
     # Avoid duplicate additions from Streamlit rerenders
-    if (
-        not st.session_state.captured_photos
-        or st.session_state.captured_photos[-1]["bytes"]
-        != camera_photo.getvalue()
-    ):
-        st.session_state.captured_photos.append(
-            {
-                "img": processed_img,
-                "base64": base64_str,
-                "bytes": camera_photo.getvalue(),
-            }
-        )
+    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
+        st.session_state.captured_photos.append({
+            "img": processed_img,
+            "base64": base64_str,
+            "bytes": camera_photo.getvalue()
+        })
 
 # Display Gallery of Snapped Photos
 if st.session_state.captured_photos:
-    st.write(f"**Photos Snapped ({len(st.session_state.captured_photos)}):**")
+    st.markdown(f"**Snapped Photos ({len(st.session_state.captured_photos)}):**")
     cols = st.columns(min(len(st.session_state.captured_photos), 4))
-
+    
     for idx, photo_data in enumerate(st.session_state.captured_photos):
         with cols[idx % len(cols)]:
-            st.image(
-                photo_data["img"],
-                caption=f"Photo {idx + 1}",
-                use_container_width=True,
-            )
-
+            st.image(photo_data["img"], caption=f"Photo {idx+1}", use_container_width=True)
+            
     if st.button("🗑️ Clear All Photos", use_container_width=True):
         st.session_state.captured_photos = []
         st.rerun()
 
+st.write("")
+
 # Analyze Button
-if st.button(
-    "🔍 Analyze All Photos", type="primary", use_container_width=True
-):
+if st.button("🔍 FLIP OR SKIP?", type="primary", use_container_width=True):
     if not st.session_state.captured_photos:
         st.warning("Please snap at least one photo first.")
     else:
-        with st.spinner("Analyzing photos with Claude Vision..."):
+        with st.spinner("Evaluating item potential with FuzzFlips AI..."):
             try:
                 content_payload = []
-
+                
                 for item in st.session_state.captured_photos:
-                    content_payload.append(
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": item["base64"],
-                            },
+                    content_payload.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": item["base64"]
                         }
-                    )
-
+                    })
+                
                 prompt_text = f"""
+                You are the master sourcing advisor for 'Flip or Skip' by FuzzFlips.
                 Analyze the provided photo(s) of this resale item.
                 The item purchase cost is ${cost:.2f}.
                 
-                Please provide:
-                1. **Item Identification**: Name, brand, approximate age/era, vintage markers (if any), and notable features/tags.
-                2. **Estimated Resale Value**: Expected price range on platforms like eBay, Poshmark, or Mercari.
-                3. **Estimated Profit**: Net profit estimate after purchase cost (${cost:.2f}) and typical platform/shipping fees (~20%).
-                4. **Buy / Pass Recommendation**: A clear BUY, PASS, or RISKY decision with 2-3 sentence justification.
+                Please structure your response with formatting using these exact section headers:
+                
+                ### 🏷️ Item Identification
+                Brand, model/style, category, era/vintage status, and notable tags/features.
+                
+                ### 💵 Estimated Resale Value
+                Expected resale price range on eBay, Poshmark, Mercari, or Depop.
+                
+                ### 📈 Projected Net Profit
+                Estimated net profit calculation after accounting for purchase cost (${cost:.2f}) and ~20% for platform fees & shipping costs.
+                
+                ### 🚦 VERDICT: [FLIP, SKIP, or RISKY]
+                Start with a bold line: "**VERDICT: [FLIP / SKIP / RISKY]**"
+                Followed by a punchy 2-3 sentence explanation on why to buy or pass (considering sell-through speed, demand, and risk).
                 """
-
-                content_payload.append({"type": "text", "text": prompt_text})
-
+                
+                content_payload.append({
+                    "type": "text",
+                    "text": prompt_text
+                })
+                
                 message = client.messages.create(
                     model="claude-sonnet-5",
                     max_tokens=1000,
-                    messages=[{"role": "user", "content": content_payload}],
+                    messages=[{"role": "user", "content": content_payload}]
                 )
-
+                
                 st.markdown("---")
-                st.subheader("📊 Resale Analysis")
+                st.subheader("📊 FuzzFlips Analysis")
                 st.markdown(message.content[0].text)
-
+                
             except Exception as e:
                 st.error(f"Error analyzing images: {e}")
