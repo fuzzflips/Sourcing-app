@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Theme & Giant Touch Controls
+# 2. Custom CSS for FuzzFlips Theme & Touch Controls
 st.markdown("""
     <style>
     /* Generous top padding to clear Streamlit's header navigation */
@@ -38,12 +38,26 @@ st.markdown("""
         background-color: #E05500 !important;
     }
 
-    /* Secondary Buttons */
+    /* Secondary Buttons / Step Buttons */
     div.stButton > button[kind="secondary"] {
         border: 2px solid #008A3C !important;
         color: #008A3C !important;
-        font-weight: 700 !important;
+        font-weight: 800 !important;
+        font-size: 1.1rem !important;
         border-radius: 10px !important;
+        padding: 0.5rem !important;
+    }
+
+    /* Target direct number input box for large font touch editing */
+    div[data-testid="stNumberInput"] input {
+        font-size: 1.8rem !important;
+        font-weight: 800 !important;
+        text-align: center !important;
+        color: #FFFFFF !important;
+        background-color: #1E1E1E !important;
+        border: 2px solid #FF6600 !important;
+        border-radius: 12px !important;
+        padding: 8px !important;
     }
 
     /* Branded Header Title */
@@ -106,48 +120,39 @@ if "captured_photos" not in st.session_state:
 if "item_cost" not in st.session_state:
     st.session_state.item_cost = 3.00
 
-# --- LARGE TOUCH-FRIENDLY PURCHASE COST CONTROLLER ---
+# --- VERTICALLY STACKED COST CONTROLLER ---
 st.markdown('<div class="fuzz-label">Purchase Cost ($):</div>', unsafe_allow_html=True)
 
-cost_col1, cost_col2, cost_col3 = st.columns([1.2, 2.2, 1.2])
+# 1. Plus $1.00 Button on top
+if st.button("➕ $1.00", use_container_width=True, key="cost_plus"):
+    st.session_state.item_cost += 1.00
+    st.rerun()
 
-with cost_col1:
-    if st.button("➖ $0.50", use_container_width=True, key="cost_minus"):
-        st.session_state.item_cost = max(0.0, st.session_state.item_cost - 0.50)
-        st.rerun()
+# 2. Clickable/Editable Number Field in center
+new_cost = st.number_input(
+    label="cost_input_field",
+    label_visibility="collapsed",
+    min_value=0.0,
+    value=float(st.session_state.item_cost),
+    step=1.00,
+    format="%.2f"
+)
 
-with cost_col2:
-    # Display current cost in a massive, high-visibility styled box
-    st.markdown(
-        f"""
-        <div style="
-            background-color: #1E1E1E; 
-            border: 2px solid #FF6600; 
-            border-radius: 12px; 
-            text-align: center; 
-            padding: 8px; 
-            font-size: 1.8rem; 
-            font-weight: 800; 
-            color: #FFFFFF;
-            letter-spacing: 1px;">
-            ${st.session_state.item_cost:.2f}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+# Update state if edited manually via keyboard input
+if new_cost != st.session_state.item_cost:
+    st.session_state.item_cost = new_cost
 
-with cost_col3:
-    if st.button("➕ $0.50", use_container_width=True, key="cost_plus"):
-        st.session_state.item_cost += 0.50
-        st.rerun()
+# 3. Minus $1.00 Button on bottom
+if st.button("➖ $1.00", use_container_width=True, key="cost_minus"):
+    st.session_state.item_cost = max(0.0, st.session_state.item_cost - 1.00)
+    st.rerun()
 
 cost = st.session_state.item_cost
 st.write("")
 
-# --- NATIVE FULL-WIDTH MOBILE HTML5 CAMERA COMPONENT ---
+# --- FULL-WIDTH HTML5 CAMERA COMPONENT ---
 st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
 
-# We use an iframe-based HTML5 component to stream the mobile camera edge-to-edge
 camera_html = """
 <!DOCTYPE html>
 <html>
@@ -211,7 +216,6 @@ camera_html = """
         const canvas = document.getElementById('canvas');
         const snapButton = document.getElementById('snap');
 
-        // Request front/back mobile camera stream with vertical preference
         navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 1280 } },
             audio: false
@@ -232,7 +236,6 @@ camera_html = """
             
             const dataURL = canvas.toDataURL('image/jpeg', 0.85);
             
-            // Send captured image data back to Streamlit via parent window communication
             window.parent.postMessage({
                 type: 'streamlit:setComponentValue',
                 value: dataURL
@@ -243,13 +246,12 @@ camera_html = """
 </html>
 """
 
-# Render custom full-width camera component (height set to 560px to fit preview + giant button)
+# Render custom HTML camera stream
 camera_data = components.html(camera_html, height=560)
 
-# Capture image transmission from component back to Python session state
+# Capture photo payload
 if camera_data:
     try:
-        # Convert base64 data URL string back to PIL Image
         header, encoded = camera_data.split(",", 1)
         binary_data = base64.b64decode(encoded)
         
@@ -264,7 +266,6 @@ if camera_data:
         processed_bytes = buffer.getvalue()
         base64_str = base64.b64encode(processed_bytes).decode("utf-8")
         
-        # Avoid duplicate additions
         if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != processed_bytes:
             st.session_state.captured_photos.append({
                 "img": img,
