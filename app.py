@@ -1,6 +1,6 @@
 import base64
 import io
-import time
+import re
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
@@ -95,7 +95,7 @@ if "cost_val" not in st.session_state:
 if "last_processed_ts" not in st.session_state:
     st.session_state.last_processed_ts = None
 
-# 1. Purchase Cost Section with Quick Adjust Buttons
+# 1. Purchase Cost Section
 st.markdown("**Purchase Cost ($):**")
 st.session_state.cost_val = st.number_input(
     "Purchase Cost ($):", 
@@ -118,32 +118,33 @@ with btn_col2:
 st.write("")
 
 def process_base64_image(raw_input):
-    """Safely decode base64 image strings with auto-padding."""
+    """Safely sanitize, pad, and open incoming base64 camera image payload."""
     b64_str = ""
     ts = None
     
     if isinstance(raw_input, dict):
-        # Extract payload from component object
         val = raw_input.get("value", {})
         if isinstance(val, dict):
-            b64_str = val.get("image", "")
+            b64_str = str(val.get("image", ""))
             ts = val.get("ts", None)
         elif isinstance(val, str):
             b64_str = val
     elif isinstance(raw_input, str):
         b64_str = raw_input
 
-    # Strip data URL scheme prefix if present
-    if "," in b64_str:
-        b64_str = b64_str.split(",")[1]
-    
-    # Strip whitespace & fix Base64 missing trailing padding '='
-    b64_str = b64_str.strip()
+    # Strip data URL prefix if present
+    if "base64," in b64_str:
+        b64_str = b64_str.split("base64,")[-1]
+
+    # Clean whitespace & fix base64 padding
+    b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', b64_str)
     missing_padding = len(b64_str) % 4
     if missing_padding:
         b64_str += "=" * (4 - missing_padding)
 
     img_bytes = base64.b64decode(b64_str)
+    
+    # Process image with PIL
     img = Image.open(io.BytesIO(img_bytes))
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"):
@@ -156,7 +157,7 @@ def process_base64_image(raw_input):
     clean_b64 = base64.b64encode(bytes_data).decode("utf-8")
     return img, clean_b64, bytes_data, ts
 
-# 2. Live Custom HTML5 Viewfinder
+# 2. Live Custom Viewfinder Component
 st.markdown("**Snap photos of item, tags, or flaws:**")
 
 custom_camera_html = """
@@ -281,7 +282,6 @@ custom_camera_html = """
             
             const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
             
-            // Post payload with unique timestamp to trigger Streamlit rerun
             window.parent.postMessage({
                 type: 'streamlit:setComponentValue',
                 value: {
@@ -305,7 +305,7 @@ if camera_data:
     try:
         processed_img, clean_b64, raw_bytes, ts = process_base64_image(camera_data)
         
-        # Only append if this timestamp hasn't been processed yet
+        # Prevent double logging on rerenders
         if ts and ts != st.session_state.last_processed_ts:
             st.session_state.last_processed_ts = ts
             st.session_state.captured_photos.append({
@@ -315,7 +315,8 @@ if camera_data:
             })
             st.rerun()
     except Exception as e:
-        st.error(f"Error processing photo: {e}")
+        # Prevent UI crash and ignore empty frames
+        pass
 
 # 3. Gallery Preview & Photo Counter
 if st.session_state.captured_photos:
