@@ -3,7 +3,6 @@ import io
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
-import streamlit.components.v1 as components
 
 # 1. Page Config
 st.set_page_config(
@@ -112,12 +111,15 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 # Initialize Anthropic Client
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Initialize session state gallery and cost
+# Initialize session states
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
 if "item_cost" not in st.session_state:
     st.session_state.item_cost = 3.00
+
+if "camera_key" not in st.session_state:
+    st.session_state.camera_key = 0
 
 # --- VERTICALLY STACKED COST CONTROLLER ---
 st.markdown('<div class="fuzz-label">Purchase Cost ($):</div>', unsafe_allow_html=True)
@@ -149,10 +151,9 @@ if st.button("➖ $1.00", use_container_width=True, key="cost_minus"):
 cost = st.session_state.item_cost
 st.write("")
 
-# --- RELIABLE NATIVE CAMERA INPUT ---
+# --- MULTI-PHOTO CAMERA FEED WITH AUTO-RESET KEY ---
 st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
 
-# Force full width styling onto native Streamlit camera
 st.markdown("""
     <style>
     [data-testid="stCameraInput"] {
@@ -169,7 +170,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-camera_photo = st.camera_input("", key="fuzz_camera")
+# Dynamic camera input key allows instant resetting for multiple snaps
+camera_photo = st.camera_input("", key=f"fuzz_cam_{st.session_state.camera_key}")
 
 def process_image(img_file):
     """Auto-orient and compress photos."""
@@ -185,17 +187,19 @@ def process_image(img_file):
     base64_str = base64.b64encode(bytes_data).decode("utf-8")
     return img, base64_str, bytes_data
 
-# Capture image from native camera input
+# When a photo is taken, save it and immediately reset the camera key
 if camera_photo:
     processed_img, base64_str, bytes_val = process_image(camera_photo)
     
-    # Avoid duplicate additions
-    if not any(p["bytes"] == bytes_val for p in st.session_state.captured_photos):
-        st.session_state.captured_photos.append({
-            "img": processed_img,
-            "base64": base64_str,
-            "bytes": bytes_val
-        })
+    st.session_state.captured_photos.append({
+        "img": processed_img,
+        "base64": base64_str,
+        "bytes": bytes_val
+    })
+    
+    # Increment camera key to automatically re-open live camera stream
+    st.session_state.camera_key += 1
+    st.rerun()
 
 # Display Gallery of Snapped Photos
 if st.session_state.captured_photos:
@@ -208,6 +212,7 @@ if st.session_state.captured_photos:
             
     if st.button("🗑️ Clear All Photos", use_container_width=True):
         st.session_state.captured_photos = []
+        st.session_state.camera_key += 1
         st.rerun()
 
 st.write("")
