@@ -92,6 +92,23 @@ st.markdown("""
         font-size: 0.95rem !important;
         line-height: 1.5 !important;
     }
+
+    /* --- AGGRESSIVE MOBILE CAMERA FULL-WIDTH STYLING --- */
+    [data-testid="stCameraInput"],
+    [data-testid="stCameraInput"] > div,
+    [data-testid="stCameraInput"] video,
+    [data-testid="stCameraInput"] img,
+    [data-testid="stCameraInput"] iframe {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+    }
+    
+    [data-testid="stCameraInput"] > div {
+        border-radius: 12px !important;
+        border: 2px solid #008A3C !important;
+        overflow: hidden !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -153,22 +170,6 @@ st.write("")
 
 # --- MULTI-PHOTO CAMERA FEED WITH AUTO-RESET KEY ---
 st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
-
-st.markdown("""
-    <style>
-    [data-testid="stCameraInput"] {
-        width: 100% !important;
-    }
-    [data-testid="stCameraInput"] > div {
-        width: 100% !important;
-    }
-    [data-testid="stCameraInput"] iframe {
-        width: 100% !important;
-        border-radius: 12px !important;
-        border: 2px solid #008A3C !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 # Dynamic camera input key allows instant resetting for multiple snaps
 camera_photo = st.camera_input("", key=f"fuzz_cam_{st.session_state.camera_key}")
