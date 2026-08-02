@@ -107,7 +107,7 @@ if st.button("🔍 Analyze Item", type="primary", use_container_width=True):
 
                 # Call Anthropic API
                 message = client.messages.create(
-                    model="claude-3-5-sonnet-latest",
+                    model="claude-sonnet-5",
                     max_tokens=1000,
                     messages=[{"role": "user", "content": content_payload}],
                 )
