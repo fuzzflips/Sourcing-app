@@ -11,15 +11,17 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS
+# 2. Custom CSS (Includes forced wide viewfinder transform)
 st.markdown("""
     <style>
+    /* Safe top margin clearing Streamlit's header */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         padding-top: 4.8rem !important;
     }
     
+    /* Branded Header Title */
     .fuzz-title {
         font-family: 'Impact', 'Arial Black', sans-serif;
         font-style: italic;
@@ -40,9 +42,10 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* Force Camera Container Layout */
+    /* Force Camera Container to Full Width & Scale Inner Feed */
     div[data-testid="stCameraInput"] {
         width: 100% !important;
+        max-width: 100% !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
         overflow: hidden !important;
@@ -50,6 +53,13 @@ st.markdown("""
 
     div[data-testid="stCameraInput"] > div {
         width: 100% !important;
+    }
+
+    /* Scale up iframe contents to fill side margins */
+    div[data-testid="stCameraInput"] iframe {
+        width: 120% !important;
+        margin-left: -10% !important;
+        min-height: 380px !important;
     }
 
     /* Primary CTA Button */
@@ -144,7 +154,6 @@ camera_photo = st.camera_input("", label_visibility="collapsed")
 if camera_photo:
     photo_bytes = camera_photo.getvalue()
     
-    # Check if this exact photo byte string has already been saved to prevent loop duplicates
     already_saved = any(p["bytes"] == photo_bytes for p in st.session_state.captured_photos)
     
     if not already_saved:
