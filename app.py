@@ -1,10 +1,8 @@
 import base64
 import io
-import re
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
-import streamlit.components.v1 as components
 
 # 1. Page Config
 st.set_page_config(
@@ -13,10 +11,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS & Styling
+# 2. Complete Custom Styling (FuzzFlips Brand Theme + Full Width Camera)
 st.markdown("""
     <style>
-    /* Safe top margin clearing Streamlit header */
+    /* Safe top margin clearing Streamlit's top nav header */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -44,6 +42,25 @@ st.markdown("""
         font-weight: 500;
     }
 
+    /* Target Camera Input Container to Stretch Edge to Edge */
+    div[data-testid="stCameraInput"] {
+        width: 100% !important;
+        border-radius: 12px !important;
+        border: 2px solid #008A3C !important;
+        overflow: hidden !important;
+        background-color: #0d1117 !important;
+    }
+
+    div[data-testid="stCameraInput"] > div {
+        width: 100% !important;
+    }
+
+    /* Stretch the inner video frame using a CSS transform zoom trick */
+    div[data-testid="stCameraInput"] iframe {
+        width: 100% !important;
+        height: 420px !important;
+    }
+
     /* Primary CTA Button (FuzzFlips Orange) */
     div.stButton > button[kind="primary"] {
         background-color: #FF6600 !important;
@@ -59,7 +76,7 @@ st.markdown("""
         background-color: #E05500 !important;
     }
 
-    /* Secondary Buttons */
+    /* Secondary Quick-Adjust & Action Buttons */
     div.stButton > button[kind="secondary"] {
         border: 1px solid #008A3C !important;
         color: #008A3C !important;
@@ -85,15 +102,12 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Session State
+# Session State Initializations
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
 if "cost_val" not in st.session_state:
     st.session_state.cost_val = 3.0
-
-if "last_processed_ts" not in st.session_state:
-    st.session_state.last_processed_ts = None
 
 # 1. Purchase Cost Section
 st.markdown("**Purchase Cost ($):**")
@@ -117,34 +131,9 @@ with btn_col2:
 
 st.write("")
 
-def process_base64_image(raw_input):
-    """Safely sanitize, pad, and open incoming base64 camera image payload."""
-    b64_str = ""
-    ts = None
-    
-    if isinstance(raw_input, dict):
-        b64_str = str(raw_input.get("image", ""))
-        ts = raw_input.get("ts", None)
-    elif isinstance(raw_input, str):
-        b64_str = raw_input
-
-    if not b64_str:
-        return None, None, None, None
-
-    # Strip data URL prefix if present
-    if "base64," in b64_str:
-        b64_str = b64_str.split("base64,")[-1]
-
-    # Clean whitespace & fix base64 padding
-    b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', b64_str)
-    missing_padding = len(b64_str) % 4
-    if missing_padding:
-        b64_str += "=" * (4 - missing_padding)
-
-    img_bytes = base64.b64decode(b64_str)
-    
-    # Process image with PIL
-    img = Image.open(io.BytesIO(img_bytes))
+def process_image(img_file):
+    """Auto-orient and compress photo directly."""
+    img = Image.open(img_file)
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
@@ -153,170 +142,26 @@ def process_base64_image(raw_input):
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=85)
     bytes_data = buffer.getvalue()
-    clean_b64 = base64.b64encode(bytes_data).decode("utf-8")
-    return img, clean_b64, bytes_data, ts
+    base64_str = base64.b64encode(bytes_data).decode("utf-8")
+    return img, base64_str
 
-# 2. Live Custom Viewfinder Component
+# 2. Camera Input Section (Native Streamlit Camera Input)
 st.markdown("**Snap photos of item, tags, or flaws:**")
+camera_photo = st.camera_input("", label_visibility="collapsed", key="live_cam")
 
-custom_camera_html = """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.js"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-        
-        .cam-box {
-            position: relative;
-            width: 100%;
-            height: 420px;
-            background: #0d1117;
-            border-radius: 12px;
-            border: 2px solid #008A3C;
-            overflow: hidden;
-        }
-        
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        
-        .controls {
-            position: absolute;
-            bottom: 12px;
-            left: 0;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 10px;
-            padding: 0 16px;
-            z-index: 10;
-        }
-        
-        .snap-btn {
-            flex: 1;
-            padding: 12px 0;
-            background: #FF6600;
-            color: #FFFFFF;
-            border: none;
-            font-size: 1.05rem;
-            font-weight: 800;
-            border-radius: 8px;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .snap-btn:active {
-            background: #E05500;
-            transform: scale(0.98);
-        }
-        
-        .flip-btn {
-            background: rgba(0,0,0,0.65);
-            border: 1px solid #008A3C;
-            color: #FFF;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-            backdrop-filter: blur(4px);
-        }
-    </style>
-</head>
-<body>
-    <div class="cam-box">
-        <video id="webcam" autoplay playsinline muted></video>
-        <div class="controls">
-            <button class="snap-btn" type="button" id="snapBtn">📷 TAKE PHOTO</button>
-            <button class="flip-btn" type="button" id="flipBtn">🔄</button>
-        </div>
-        <canvas id="canvas" style="display:none;"></canvas>
-    </div>
+# Add snapped photos to gallery
+if camera_photo:
+    processed_img, base64_str = process_image(camera_photo)
+    
+    # Check duplicate entry on rerun
+    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
+        st.session_state.captured_photos.append({
+            "img": processed_img,
+            "base64": base64_str,
+            "bytes": camera_photo.getvalue()
+        })
 
-    <script>
-        let currentStream = null;
-        let useFront = false;
-
-        async function startCamera() {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-            const constraints = {
-                video: {
-                    facingMode: useFront ? "user" : "environment",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: false
-            };
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-                document.getElementById('webcam').srcObject = currentStream;
-            } catch (err) {
-                console.error("Camera access failed:", err);
-            }
-        }
-
-        document.getElementById('flipBtn').addEventListener('click', () => {
-            useFront = !useFront;
-            startCamera();
-        });
-
-        document.getElementById('snapBtn').addEventListener('click', () => {
-            const video = document.getElementById('webcam');
-            const canvas = document.getElementById('canvas');
-            if (!video || !video.videoWidth) return;
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-            
-            // Send payload to Streamlit natively via component JS SDK
-            if (window.Streamlit) {
-                window.Streamlit.setComponentValue({
-                    image: dataUrl,
-                    ts: Date.now()
-                });
-            }
-        });
-
-        startCamera();
-    </script>
-</body>
-</html>
-"""
-
-# Render custom component
-camera_data = components.html(custom_camera_html, height=440)
-
-# Process photo when snapped
-if camera_data:
-    try:
-        processed_img, clean_b64, raw_bytes, ts = process_base64_image(camera_data)
-        
-        if processed_img and ts and ts != st.session_state.last_processed_ts:
-            st.session_state.last_processed_ts = ts
-            st.session_state.captured_photos.append({
-                "img": processed_img,
-                "base64": clean_b64,
-                "bytes": raw_bytes
-            })
-            st.rerun()
-    except Exception as e:
-        pass
-
-# 3. Gallery Preview & Photo Counter
+# 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
     st.markdown(f"**📸 Captured Photos ({len(st.session_state.captured_photos)}):**")
     
@@ -327,7 +172,6 @@ if st.session_state.captured_photos:
             
     if st.button("🗑️ Clear All Photos", use_container_width=True):
         st.session_state.captured_photos = []
-        st.session_state.last_processed_ts = None
         st.rerun()
 
 st.write("")
@@ -383,7 +227,7 @@ if st.button("🔍 FLIP OR SKIP?", type="primary", use_container_width=True):
                     messages=[{"role": "user", "content": content_payload}]
                 )
                 
-                # Format output: Escape dollar signs so Markdown doesn't trigger LaTeX math italics
+                # Escape dollar signs to avoid Streamlit LaTeX italicization bug
                 formatted_text = message.content[0].text.replace("$", r"\$")
 
                 st.markdown("---")
