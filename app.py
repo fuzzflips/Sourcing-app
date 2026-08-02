@@ -150,7 +150,7 @@ if st.button("➖ $1.00", use_container_width=True, key="cost_minus"):
 cost = st.session_state.item_cost
 st.write("")
 
-# --- FULL-WIDTH HTML5 CAMERA COMPONENT ---
+# --- FULL-WIDTH HTML5 CAMERA COMPONENT WITH RELIABLE JS BRIDGE ---
 st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
 
 camera_html = """
@@ -158,6 +158,7 @@ camera_html = """
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/streamlit-component-lib@^1.4.0/dist/streamlit-component-lib.js"></script>
     <style>
         body {
             margin: 0;
@@ -171,7 +172,7 @@ camera_html = """
             position: relative;
             width: 100%;
             max-width: 500px;
-            height: 480px;
+            height: 440px;
             background: #000;
             border-radius: 12px;
             overflow: hidden;
@@ -192,15 +193,17 @@ camera_html = """
             background-color: #FF6600;
             color: white;
             border: none;
-            padding: 14px;
-            font-size: 1.1rem;
+            padding: 16px;
+            font-size: 1.2rem;
             font-weight: 800;
             border-radius: 12px;
             cursor: pointer;
             box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3);
+            -webkit-tap-highlight-color: transparent;
         }
         .snap-btn:active {
             background-color: #E05500;
+            transform: scale(0.98);
         }
     </style>
 </head>
@@ -215,6 +218,22 @@ camera_html = """
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const snapButton = document.getElementById('snap');
+
+        // Initialize Streamlit Component JS lib
+        function sendToStreamlit(data) {
+            if (window.Streamlit) {
+                window.Streamlit.setComponentValue(data);
+            } else {
+                window.parent.postMessage({
+                    type: 'streamlit:setComponentValue',
+                    value: data
+                }, '*');
+            }
+        }
+
+        if (window.Streamlit) {
+            window.Streamlit.setFrameHeight(540);
+        }
 
         navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 1280 } },
@@ -235,11 +254,7 @@ camera_html = """
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             const dataURL = canvas.toDataURL('image/jpeg', 0.85);
-            
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                value: dataURL
-            }, "*");
+            sendToStreamlit(dataURL);
         });
     </script>
 </body>
@@ -247,7 +262,7 @@ camera_html = """
 """
 
 # Render custom HTML camera stream
-camera_data = components.html(camera_html, height=560)
+camera_data = components.html(camera_html, height=540)
 
 # Capture photo payload
 if camera_data:
