@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. CSS Override to bypass Streamlit's camera height limits
+# 2. Custom CSS for FuzzFlips Brand Theme & Forced Camera Dimensions
 st.markdown("""
     <style>
     /* Padding to clear Streamlit's top header bar */
@@ -21,21 +21,22 @@ st.markdown("""
         padding-top: 3.2rem !important;
     }
     
-    /* Force camera component container to take full height */
-    [data-testid="stCameraInput"] {
+    /* Force camera container & iframe to expand */
+    div[data-testid="stCameraInput"] {
         width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
     }
-
-    [data-testid="stCameraInput"] > div {
+    
+    div[data-testid="stCameraInput"] > div {
         width: 100% !important;
         max-height: none !important;
     }
 
-    /* Target iframe directly with scale override */
-    [data-testid="stCameraInput"] iframe {
+    div[data-testid="stCameraInput"] iframe {
         width: 100% !important;
-        height: 65vh !important;
-        min-height: 550px !important;
+        min-height: 520px !important;
+        height: 60vh !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
     }
