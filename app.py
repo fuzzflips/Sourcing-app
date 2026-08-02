@@ -11,26 +11,39 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Brand Theme, Fixed Title & Taller Camera Frame
+# 2. Mobile Layout & Full-Width Camera Viewfinder Styling
 st.markdown("""
     <style>
-    /* Add extra padding at the top so title isn't hidden under Streamlit nav header */
+    /* Padding to clear Streamlit's top header bar */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
-        padding-top: 3.5rem !important;
+        padding-top: 3.2rem !important;
     }
     
-    /* Target the camera IFRAME directly to force taller vertical viewport */
+    /* Target the camera container & force full width + height */
     div[data-testid="stCameraInput"] {
         width: 100% !important;
     }
     
+    div[data-testid="stCameraInput"] > div {
+        width: 100% !important;
+    }
+
     div[data-testid="stCameraInput"] iframe {
-        height: 520px !important;
-        min-height: 520px !important;
+        width: 100% !important;
+        height: 480px !important;
+        min-height: 480px !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
+    }
+
+    /* Force raw HTML video element inside camera to fill container */
+    div[data-testid="stCameraInput"] video {
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 450px !important;
+        object-fit: cover !important;
     }
 
     /* Main CTA Button - FuzzFlips Orange */
@@ -62,7 +75,7 @@ st.markdown("""
         font-style: italic;
         font-size: 2.6rem;
         line-height: 1.1;
-        margin-top: 0.5rem;
+        margin-top: 0.2rem;
         margin-bottom: 0px;
         text-transform: uppercase;
         letter-spacing: 1px;
@@ -73,11 +86,11 @@ st.markdown("""
     .fuzz-subtitle {
         font-size: 0.95rem;
         color: #888888;
-        margin-bottom: 1.2rem;
+        margin-bottom: 1.0rem;
         font-weight: 500;
     }
 
-    /* Fix bullet point & text spacing on mobile */
+    /* Mobile text spacing */
     .stMarkdown p, .stMarkdown li {
         font-size: 0.95rem !important;
         line-height: 1.5 !important;
