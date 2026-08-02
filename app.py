@@ -11,17 +11,15 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for Brand & Camera Viewfinder Adjustment
+# 2. Custom CSS
 st.markdown("""
     <style>
-    /* Safe top margin clearing Streamlit's header */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         padding-top: 4.8rem !important;
     }
     
-    /* Branded Header Title */
     .fuzz-title {
         font-family: 'Impact', 'Arial Black', sans-serif;
         font-style: italic;
@@ -42,7 +40,7 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* Force Camera Viewfinder Full-Width Box */
+    /* Force Camera Container Layout */
     div[data-testid="stCameraInput"] {
         width: 100% !important;
         border-radius: 12px !important;
@@ -54,12 +52,7 @@ st.markdown("""
         width: 100% !important;
     }
 
-    div[data-testid="stCameraInput"] iframe {
-        width: 100% !important;
-        min-height: 400px !important;
-    }
-
-    /* Primary CTA Button (FuzzFlips Orange) */
+    /* Primary CTA Button */
     div.stButton > button[kind="primary"] {
         background-color: #FF6600 !important;
         color: #FFFFFF !important;
@@ -74,7 +67,7 @@ st.markdown("""
         background-color: #E05500 !important;
     }
 
-    /* Secondary Quick-Adjust & Action Buttons */
+    /* Secondary Quick-Adjust Buttons */
     div.stButton > button[kind="secondary"] {
         border: 1px solid #008A3C !important;
         color: #008A3C !important;
@@ -106,9 +99,6 @@ if "captured_photos" not in st.session_state:
 
 if "cost_val" not in st.session_state:
     st.session_state.cost_val = 3.0
-
-if "cam_key" not in st.session_state:
-    st.session_state.cam_key = 0
 
 # 1. Purchase Cost Section
 st.markdown("**Purchase Cost ($):**")
@@ -148,22 +138,23 @@ def process_image(img_file):
 
 # 2. Camera Input Section
 st.markdown("**Snap photos of item, tags, or flaws:**")
+camera_photo = st.camera_input("", label_visibility="collapsed")
 
-# Dynamic Key Forces Camera Reset Upon Saving Photo
-camera_photo = st.camera_input("", label_visibility="collapsed", key=f"camera_{st.session_state.cam_key}")
-
+# Auto-save snap when user hits "Take Photo"
 if camera_photo:
-    # Action button right under the snapped photo
-    if st.button("📸 SAVE & SNAP ANOTHER PHOTO", type="secondary", use_container_width=True):
+    photo_bytes = camera_photo.getvalue()
+    
+    # Check if this exact photo byte string has already been saved to prevent loop duplicates
+    already_saved = any(p["bytes"] == photo_bytes for p in st.session_state.captured_photos)
+    
+    if not already_saved:
         processed_img, base64_str = process_image(camera_photo)
         st.session_state.captured_photos.append({
             "img": processed_img,
             "base64": base64_str,
-            "bytes": camera_photo.getvalue()
+            "bytes": photo_bytes
         })
-        # Incrementing key resets the camera component back to live feed instantly!
-        st.session_state.cam_key += 1
-        st.rerun()
+        st.success(f"✅ Photo #{len(st.session_state.captured_photos)} added to item!")
 
 # 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
