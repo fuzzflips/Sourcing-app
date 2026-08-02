@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Brand Theme (Orange #FF6600 & Green #008A3C)
+# 2. Custom CSS for FuzzFlips Brand Theme & Taller Viewfinder
 st.markdown("""
     <style>
     /* Compact mobile margins */
@@ -21,9 +21,18 @@ st.markdown("""
         padding-top: 1rem !important;
     }
     
-    /* Camera height & fitting */
+    /* Force camera container & video stream to be significantly taller */
+    div[data-testid="stCameraInput"] {
+        width: 100% !important;
+    }
+    
+    div[data-testid="stCameraInput"] > div {
+        max-height: none !important;
+    }
+
     div[data-testid="stCameraInput"] video {
-        min-height: 380px !important;
+        min-height: 520px !important;
+        height: 60vh !important;
         object-fit: cover !important;
         border-radius: 12px;
         border: 2px solid #008A3C;
