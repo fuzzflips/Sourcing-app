@@ -1,7 +1,5 @@
 import base64
 import io
-import os
-import tempfile
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
@@ -151,118 +149,53 @@ if st.button("➖ $1.00", use_container_width=True, key="cost_minus"):
 cost = st.session_state.item_cost
 st.write("")
 
-# --- TRUE BIDIRECTIONAL HTML5 CAMERA COMPONENT SETUP ---
-@st.cache_resource
-def get_camera_component():
-    """Builds a temporary real Streamlit component to guarantee 2-way image transfer."""
-    temp_dir = os.path.join(tempfile.gettempdir(), "fuzzflips_cam")
-    os.makedirs(temp_dir, exist_ok=True)
-    
-    html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <!-- Load Streamlit's official communication library -->
-        <script src="https://unpkg.com/streamlit-component-lib@1.3.0/dist/streamlit-component-lib.js"></script>
-        <style>
-            * { box-sizing: border-box; }
-            body { margin: 0; padding: 0; background-color: #0E1117; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; }
-            .cam-container { position: relative; width: 100%; height: 420px; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #008A3C; }
-            video { width: 100%; height: 100%; object-fit: cover; }
-            canvas { display: none; }
-            .snap-btn { margin-top: 10px; width: 100%; background-color: #FF6600; color: white; border: none; padding: 16px; font-size: 1.2rem; font-weight: 800; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3); touch-action: manipulation; }
-            .snap-btn:active { background-color: #E05500; transform: scale(0.98); }
-        </style>
-    </head>
-    <body>
-        <div class="cam-container">
-            <video id="video" autoplay playsinline muted></video>
-        </div>
-        <button class="snap-btn" id="snap" type="button">📸 TAKE PHOTO</button>
-        <canvas id="canvas"></canvas>
-
-        <script>
-            // 1. Initialize Streamlit Connection
-            function onRender(event) {
-                Streamlit.setFrameHeight(500);
-            }
-            Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
-            Streamlit.setComponentReady();
-
-            // 2. Setup Camera
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            const snapButton = document.getElementById('snap');
-
-            navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: "environment" } },
-                audio: false
-            }).then(stream => {
-                video.srcObject = stream;
-            }).catch(err => {
-                console.error("Camera access error:", err);
-            });
-
-            // 3. Snap and Send Data
-            snapButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                canvas.width = video.videoWidth || 1280;
-                canvas.height = video.videoHeight || 1280;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                const dataURL = canvas.toDataURL('image/jpeg', 0.85);
-                
-                // This officially pushes the image back to Python
-                Streamlit.setComponentValue(dataURL);
-            });
-        </script>
-    </body>
-    </html>
-    """
-    
-    # Write the component out
-    with open(os.path.join(temp_dir, "index.html"), "w") as f:
-        f.write(html_content)
-        
-    return components.declare_component("fuzzflips_cam", path=temp_dir)
-
-# Initialize the custom camera
-fuzzflips_camera = get_camera_component()
-
+# --- RELIABLE NATIVE CAMERA INPUT ---
 st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
 
-# Render it and capture the returned image base64!
-camera_data = fuzzflips_camera(key="main_cam")
+# Force full width styling onto native Streamlit camera
+st.markdown("""
+    <style>
+    [data-testid="stCameraInput"] {
+        width: 100% !important;
+    }
+    [data-testid="stCameraInput"] > div {
+        width: 100% !important;
+    }
+    [data-testid="stCameraInput"] iframe {
+        width: 100% !important;
+        border-radius: 12px !important;
+        border: 2px solid #008A3C !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Process photo when snapped
-if camera_data:
-    try:
-        header, encoded = camera_data.split(",", 1)
-        binary_data = base64.b64decode(encoded)
-        
-        img = Image.open(io.BytesIO(binary_data))
-        img = ImageOps.exif_transpose(img)
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-        img.thumbnail((1200, 1200))
-        
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=85)
-        processed_bytes = buffer.getvalue()
-        base64_str = base64.b64encode(processed_bytes).decode("utf-8")
-        
-        # Check against last photo to avoid duplicate rerender additions
-        if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != processed_bytes:
-            st.session_state.captured_photos.append({
-                "img": img,
-                "base64": base64_str,
-                "bytes": processed_bytes
-            })
-            st.rerun()
-    except Exception as e:
-        pass
+camera_photo = st.camera_input("", key="fuzz_camera")
+
+def process_image(img_file):
+    """Auto-orient and compress photos."""
+    img = Image.open(img_file)
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    img.thumbnail((1200, 1200))
+    
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=85)
+    bytes_data = buffer.getvalue()
+    base64_str = base64.b64encode(bytes_data).decode("utf-8")
+    return img, base64_str, bytes_data
+
+# Capture image from native camera input
+if camera_photo:
+    processed_img, base64_str, bytes_val = process_image(camera_photo)
+    
+    # Avoid duplicate additions
+    if not any(p["bytes"] == bytes_val for p in st.session_state.captured_photos):
+        st.session_state.captured_photos.append({
+            "img": processed_img,
+            "base64": base64_str,
+            "bytes": bytes_val
+        })
 
 # Display Gallery of Snapped Photos
 if st.session_state.captured_photos:
