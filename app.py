@@ -11,10 +11,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Complete Custom Styling (FuzzFlips Orange & Green)
+# 2. Custom CSS for Brand & Camera Viewfinder Adjustment
 st.markdown("""
     <style>
-    /* Safe top margin clearing Streamlit's header completely */
+    /* Safe top margin clearing Streamlit's header */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -42,12 +42,12 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* Force Camera Viewfinder Full Width & Scaled Zoom */
+    /* Force Camera Viewfinder Full-Width Box */
     div[data-testid="stCameraInput"] {
         width: 100% !important;
-        overflow: hidden !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
+        overflow: hidden !important;
     }
 
     div[data-testid="stCameraInput"] > div {
@@ -56,9 +56,7 @@ st.markdown("""
 
     div[data-testid="stCameraInput"] iframe {
         width: 100% !important;
-        height: 380px !important;
-        transform: scale(1.32) !important;
-        transform-origin: center center !important;
+        min-height: 400px !important;
     }
 
     /* Primary CTA Button (FuzzFlips Orange) */
@@ -102,14 +100,17 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Session State for Photo List & Cost
+# Session State Initializations
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
 if "cost_val" not in st.session_state:
     st.session_state.cost_val = 3.0
 
-# 1. Purchase Cost Section with Re-Added Quick Increment Buttons
+if "cam_key" not in st.session_state:
+    st.session_state.cam_key = 0
+
+# 1. Purchase Cost Section
 st.markdown("**Purchase Cost ($):**")
 st.session_state.cost_val = st.number_input(
     "Purchase Cost ($):", 
@@ -147,25 +148,27 @@ def process_image(img_file):
 
 # 2. Camera Input Section
 st.markdown("**Snap photos of item, tags, or flaws:**")
-camera_photo = st.camera_input("", label_visibility="collapsed")
 
-# Store captured photos in rapid-fire session list
+# Dynamic Key Forces Camera Reset Upon Saving Photo
+camera_photo = st.camera_input("", label_visibility="collapsed", key=f"camera_{st.session_state.cam_key}")
+
 if camera_photo:
-    processed_img, base64_str = process_image(camera_photo)
-    
-    # Avoid duplicate additions from Streamlit automatic rerenders
-    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
+    # Action button right under the snapped photo
+    if st.button("📸 SAVE & SNAP ANOTHER PHOTO", type="secondary", use_container_width=True):
+        processed_img, base64_str = process_image(camera_photo)
         st.session_state.captured_photos.append({
             "img": processed_img,
             "base64": base64_str,
             "bytes": camera_photo.getvalue()
         })
+        # Incrementing key resets the camera component back to live feed instantly!
+        st.session_state.cam_key += 1
+        st.rerun()
 
 # 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
     st.markdown(f"**📸 Captured Photos ({len(st.session_state.captured_photos)}):**")
     
-    # Display thumbnails in a 4-column grid
     cols = st.columns(min(len(st.session_state.captured_photos), 4))
     for idx, photo_data in enumerate(st.session_state.captured_photos):
         with cols[idx % 4]:
