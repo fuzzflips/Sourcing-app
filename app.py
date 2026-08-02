@@ -1,8 +1,10 @@
 import base64
 import io
+import json
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 1. Page Config
 st.set_page_config(
@@ -11,13 +13,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. FuzzFlips Brand CSS & Clean Mobile Layout
+# 2. Custom CSS & Header Layout
 st.markdown("""
     <style>
-    /* Clean top margin clearing Streamlit's header completely */
+    /* Clear top navigation bar */
     .block-container {
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
         padding-top: 4.8rem !important;
     }
     
@@ -42,14 +44,6 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* Style the Camera / File Uploader Box */
-    div[data-testid="stFileUploader"] {
-        border: 2px dashed #008A3C !important;
-        border-radius: 12px !important;
-        padding: 0.5rem !important;
-        background-color: rgba(0, 138, 60, 0.03) !important;
-    }
-
     /* Primary CTA Button (FuzzFlips Orange) */
     div.stButton > button[kind="primary"] {
         background-color: #FF6600 !important;
@@ -65,7 +59,7 @@ st.markdown("""
         background-color: #E05500 !important;
     }
 
-    /* Secondary Quick-Adjust & Action Buttons */
+    /* Secondary Buttons */
     div.stButton > button[kind="secondary"] {
         border: 1px solid #008A3C !important;
         color: #008A3C !important;
@@ -91,14 +85,14 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Session State Setup
+# Session State for Photos & Cost
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
 if "cost_val" not in st.session_state:
     st.session_state.cost_val = 3.0
 
-# 1. Purchase Cost Input & Quick Increments
+# 1. Purchase Cost Section with Quick Buttons
 st.markdown("**Purchase Cost ($):**")
 st.session_state.cost_val = st.number_input(
     "Purchase Cost ($):", 
@@ -120,9 +114,13 @@ with btn_col2:
 
 st.write("")
 
-def process_image(img_file):
-    """Auto-orient and compress photo."""
-    img = Image.open(img_file)
+def process_base64_image(b64_str):
+    """Process incoming camera snapshots directly."""
+    if "," in b64_str:
+        b64_str = b64_str.split(",")[1]
+    
+    img_bytes = base64.b64decode(b64_str)
+    img = Image.open(io.BytesIO(img_bytes))
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
@@ -131,30 +129,162 @@ def process_image(img_file):
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=85)
     bytes_data = buffer.getvalue()
-    base64_str = base64.b64encode(bytes_data).decode("utf-8")
-    return img, base64_str
+    clean_b64 = base64.b64encode(bytes_data).decode("utf-8")
+    return img, clean_b64, bytes_data
 
-# 2. Native Full-Screen Mobile Camera Trigger
+# 2. Live Inline Custom Viewfinder
 st.markdown("**Snap photos of item, tags, or flaws:**")
 
-uploaded_files = st.file_uploader(
-    "📷 Tap to open phone camera or photos", 
-    type=["jpg", "jpeg", "png", "heic"], 
-    accept_multiple_files=True,
-    label_visibility="collapsed"
-)
+custom_camera_html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        
+        .cam-box {
+            position: relative;
+            width: 100%;
+            height: 420px;
+            background: #0d1117;
+            border-radius: 12px;
+            border: 2px solid #008A3C;
+            overflow: hidden;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 12px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            padding: 0 16px;
+            z-index: 10;
+        }
+        
+        .snap-btn {
+            flex: 1;
+            padding: 12px 0;
+            background: #FF6600;
+            color: #FFFFFF;
+            border: none;
+            font-size: 1.05rem;
+            font-weight: 800;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .snap-btn:active {
+            background: #E05500;
+            transform: scale(0.98);
+        }
+        
+        .flip-btn {
+            background: rgba(0,0,0,0.65);
+            border: 1px solid #008A3C;
+            color: #FFF;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body>
+    <div class="cam-box">
+        <video id="webcam" autoplay playsinline muted></video>
+        <div class="controls">
+            <button class="snap-btn" onclick="snap()">📷 TAKE PHOTO</button>
+            <button class="flip-btn" onclick="toggleCam()">🔄</button>
+        </div>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
 
-if uploaded_files:
-    for uploaded_file in uploaded_files:
-        bytes_val = uploaded_file.getvalue()
-        # Prevent duplicate uploads
-        if not any(p["bytes"] == bytes_val for p in st.session_state.captured_photos):
-            processed_img, base64_str = process_image(uploaded_file)
-            st.session_state.captured_photos.append({
-                "img": processed_img,
-                "base64": base64_str,
-                "bytes": bytes_val
-            })
+    <script>
+        let currentStream = null;
+        let useFront = false;
+
+        async function startCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            const constraints = {
+                video: {
+                    facingMode: useFront ? "user" : "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            };
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                document.getElementById('webcam').srcObject = currentStream;
+            } catch (err) {
+                console.error("Camera access failed:", err);
+            }
+        }
+
+        function toggleCam() {
+            useFront = !useFront;
+            startCamera();
+        }
+
+        function snap() {
+            const video = document.getElementById('webcam');
+            const canvas = document.getElementById('canvas');
+            if (!video.videoWidth) return;
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            
+            // Post value directly to Streamlit
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: dataUrl
+            }, '*');
+        }
+
+        startCamera();
+    </script>
+</body>
+</html>
+"""
+
+# Render custom HTML5 component
+camera_data = components.html(custom_camera_html, height=440)
+
+# Process photo when snapped
+if camera_data:
+    processed_img, clean_b64, raw_bytes = process_base64_image(camera_data)
+    
+    # Avoid duplicate additions
+    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != raw_bytes:
+        st.session_state.captured_photos.append({
+            "img": processed_img,
+            "base64": clean_b64,
+            "bytes": raw_bytes
+        })
+        st.rerun()
 
 # 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
