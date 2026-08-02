@@ -2,7 +2,6 @@ import base64
 import io
 import re
 import os
-import tempfile
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
@@ -144,121 +143,126 @@ with btn_col2:
 st.write("")
 
 # --- 2. THE ULTIMATE FULL-WIDTH CAMERA COMPONENT ---
-# We dynamically create a true Streamlit custom component so the button natively talks to Python.
-if "cam_component_path" not in st.session_state:
-    temp_dir = tempfile.mkdtemp()
-    html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit-component-lib.js"></script>
-        <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body { background: transparent; font-family: -apple-system, sans-serif; overflow: hidden; }
-            
-            .cam-box {
-                position: relative;
-                width: 100%;
-                height: 420px;
-                background: #0d1117;
-                border-radius: 12px;
-                border: 2px solid #008A3C;
-                overflow: hidden;
-            }
-            
-            video { width: 100%; height: 100%; object-fit: cover; display: block; }
-            
-            .controls {
-                position: absolute; bottom: 12px; left: 0; width: 100%;
-                display: flex; justify-content: center; align-items: center; gap: 10px; padding: 0 16px; z-index: 10;
-            }
-            
-            .snap-btn {
-                flex: 1; padding: 14px 0; background: #FF6600; color: #FFF; border: none; 
-                font-size: 1.15rem; font-weight: 800; border-radius: 8px; cursor: pointer; 
-                box-shadow: 0 4px 12px rgba(0,0,0,0.5); text-transform: uppercase;
-            }
-            .snap-btn:active { background: #E05500; transform: scale(0.98); }
-            
-            .flip-btn {
-                background: rgba(0,0,0,0.65); border: 1px solid #008A3C; color: #FFF; 
-                padding: 14px 18px; font-size: 1.2rem; border-radius: 8px; font-weight: 700; cursor: pointer;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="cam-box">
-            <video id="webcam" autoplay playsinline muted></video>
-            <div class="controls">
-                <button class="snap-btn" id="snapBtn">📷 TAKE PHOTO</button>
-                <button class="flip-btn" id="flipBtn">🔄</button>
-            </div>
-            <canvas id="canvas" style="display:none;"></canvas>
+# Safely build the component in the trusted app directory so Streamlit Cloud doesn't block it
+COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fuzzflips_cam_widget")
+os.makedirs(COMPONENT_DIR, exist_ok=True)
+HTML_PATH = os.path.join(COMPONENT_DIR, "index.html")
+
+html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit-component-lib.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: transparent; font-family: -apple-system, sans-serif; overflow: hidden; margin: 0; }
+        
+        .cam-box {
+            position: relative;
+            width: 100%;
+            height: 420px;
+            background: #0d1117;
+            border-radius: 12px;
+            border: 2px solid #008A3C;
+            overflow: hidden;
+        }
+        
+        video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        
+        .controls {
+            position: absolute; bottom: 12px; left: 0; width: 100%;
+            display: flex; justify-content: center; align-items: center; gap: 10px; padding: 0 16px; z-index: 10;
+        }
+        
+        .snap-btn {
+            flex: 1; padding: 14px 0; background: #FF6600; color: #FFF; border: none; 
+            font-size: 1.15rem; font-weight: 800; border-radius: 8px; cursor: pointer; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); text-transform: uppercase;
+        }
+        .snap-btn:active { background: #E05500; transform: scale(0.98); }
+        
+        .flip-btn {
+            background: rgba(0,0,0,0.65); border: 1px solid #008A3C; color: #FFF; 
+            padding: 14px 18px; font-size: 1.2rem; border-radius: 8px; font-weight: 700; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="cam-box">
+        <!-- playsinline is crucial so iOS doesn't open full screen media player -->
+        <video id="webcam" autoplay playsinline muted></video>
+        <div class="controls">
+            <button class="snap-btn" id="snapBtn">📷 TAKE PHOTO</button>
+            <button class="flip-btn" id="flipBtn">🔄</button>
         </div>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
 
-        <script>
-            let currentStream = null;
-            let useFront = false;
+    <script>
+        let currentStream = null;
+        let useFront = false;
 
-            async function startCamera() {
-                if (currentStream) {
-                    currentStream.getTracks().forEach(track => track.stop());
-                }
-                const constraints = {
-                    video: { facingMode: useFront ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-                    audio: false
-                };
-                try {
-                    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    document.getElementById('webcam').srcObject = currentStream;
-                } catch (err) {
-                    console.error("Camera access failed:", err);
-                }
+        async function startCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
             }
-
-            document.getElementById('flipBtn').addEventListener('click', () => {
-                useFront = !useFront;
-                startCamera();
-            });
-
-            document.getElementById('snapBtn').addEventListener('click', () => {
+            const constraints = {
+                video: { facingMode: useFront ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false
+            };
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 const video = document.getElementById('webcam');
-                const canvas = document.getElementById('canvas');
-                if (!video || !video.videoWidth) return;
-                
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                
-                // Officially tell Streamlit the value changed
-                Streamlit.setComponentValue({
-                    image: dataUrl,
-                    ts: Date.now()
-                });
-            });
-
-            function onRender(event) {
-                Streamlit.setFrameHeight(430);
+                video.srcObject = currentStream;
+                video.play();
+            } catch (err) {
+                console.error("Camera access failed:", err);
             }
+        }
 
-            Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
-            Streamlit.setComponentReady();
+        document.getElementById('flipBtn').addEventListener('click', () => {
+            useFront = !useFront;
             startCamera();
-        </script>
-    </body>
-    </html>
-    """
-    with open(os.path.join(temp_dir, "index.html"), "w", encoding="utf-8") as f:
-        f.write(html_content)
-    st.session_state.cam_component_path = temp_dir
+        });
 
-# Register and display the true custom component
+        document.getElementById('snapBtn').addEventListener('click', () => {
+            const video = document.getElementById('webcam');
+            const canvas = document.getElementById('canvas');
+            if (!video || !video.videoWidth) return;
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            
+            // Officially tell Streamlit the value changed
+            Streamlit.setComponentValue({
+                image: dataUrl,
+                ts: Date.now()
+            });
+        });
+
+        function onRender(event) {
+            Streamlit.setFrameHeight(430);
+        }
+
+        Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
+        Streamlit.setComponentReady();
+        startCamera();
+    </script>
+</body>
+</html>
+"""
+
+# Write HTML file and declare the component
+with open(HTML_PATH, "w", encoding="utf-8") as f:
+    f.write(html_content)
+
 st.markdown("**Snap photos of item, tags, or flaws:**")
-fuzzflips_cam = components.declare_component("fuzzflips_cam", path=st.session_state.cam_component_path)
+fuzzflips_cam = components.declare_component("fuzzflips_cam", path=COMPONENT_DIR)
 camera_data = fuzzflips_cam(key="live_cam")
 
 def process_base64_payload(raw_input):
