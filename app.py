@@ -4,67 +4,31 @@ import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
 
-# 1. Page Config MUST come first
+# 1. Page Config
 st.set_page_config(
     page_title="Flip or Skip | FuzzFlips",
     page_icon="💸",
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Theme
+# 2. Complete Custom Styling (FuzzFlips Orange & Green)
 st.markdown("""
     <style>
-    /* Generous top padding to clear Streamlit's top header bar */
+    /* Safe top margin clearing Streamlit's header completely */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
-        padding-top: 4.2rem !important;
+        padding-top: 4.8rem !important;
     }
-
-    /* Expand standard camera element container */
-    div[data-testid="stCameraInput"] {
-        width: 100% !important;
-    }
-
-    div[data-testid="stCameraInput"] iframe {
-        width: 100% !important;
-        height: 500px !important;
-        min-height: 500px !important;
-        border-radius: 12px !important;
-        border: 2px solid #008A3C !important;
-    }
-
-    /* Main CTA Button - FuzzFlips Orange */
-    div.stButton > button[kind="primary"] {
-        background-color: #FF6600 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        font-weight: 800 !important;
-        font-size: 1.2rem !important;
-        border-radius: 10px !important;
-        padding: 0.7rem 1rem !important;
-        box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3) !important;
-    }
-    div.stButton > button[kind="primary"]:hover {
-        background-color: #E05500 !important;
-    }
-
-    /* Secondary Buttons */
-    div.stButton > button[kind="secondary"] {
-        border: 2px solid #008A3C !important;
-        color: #008A3C !important;
-        font-weight: 700 !important;
-        border-radius: 10px !important;
-    }
-
+    
     /* Branded Header Title */
     .fuzz-title {
         font-family: 'Impact', 'Arial Black', sans-serif;
         font-style: italic;
-        font-size: 2.6rem;
+        font-size: 2.5rem;
         line-height: 1.1;
         margin-top: 0.2rem;
-        margin-bottom: 0px;
+        margin-bottom: 2px;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
@@ -72,16 +36,53 @@ st.markdown("""
     .fuzz-green { color: #008A3C; }
     
     .fuzz-subtitle {
-        font-size: 0.95rem;
+        font-size: 0.9rem;
         color: #888888;
-        margin-bottom: 1.0rem;
+        margin-bottom: 1.2rem;
         font-weight: 500;
     }
 
-    /* Mobile text spacing */
-    .stMarkdown p, .stMarkdown li {
-        font-size: 0.95rem !important;
-        line-height: 1.5 !important;
+    /* Force Camera Viewfinder Full Width & Scaled Zoom */
+    div[data-testid="stCameraInput"] {
+        width: 100% !important;
+        overflow: hidden !important;
+        border-radius: 12px !important;
+        border: 2px solid #008A3C !important;
+    }
+
+    div[data-testid="stCameraInput"] > div {
+        width: 100% !important;
+    }
+
+    div[data-testid="stCameraInput"] iframe {
+        width: 100% !important;
+        height: 380px !important;
+        transform: scale(1.32) !important;
+        transform-origin: center center !important;
+    }
+
+    /* Primary CTA Button (FuzzFlips Orange) */
+    div.stButton > button[kind="primary"] {
+        background-color: #FF6600 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: 800 !important;
+        font-size: 1.2rem !important;
+        border-radius: 10px !important;
+        padding: 0.75rem 1rem !important;
+        box-shadow: 0 4px 10px rgba(255, 102, 0, 0.35) !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #E05500 !important;
+    }
+
+    /* Secondary Quick-Adjust & Action Buttons */
+    div.stButton > button[kind="secondary"] {
+        border: 1px solid #008A3C !important;
+        color: #008A3C !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        background-color: rgba(0, 138, 60, 0.05) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -94,29 +95,44 @@ st.markdown("""
     <div class="fuzz-subtitle">Powered by FuzzFlips AI Sourcing Companion</div>
 """, unsafe_allow_html=True)
 
-# Check for API key in secrets
+# Check API Key
 if "ANTHROPIC_API_KEY" not in st.secrets:
     st.error("Please add your ANTHROPIC_API_KEY to Streamlit Secrets.")
     st.stop()
 
-# Initialize Anthropic Client
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Initialize session states
+# Session State for Photo List & Cost
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
-if "camera_key" not in st.session_state:
-    st.session_state.camera_key = 0
+if "cost_val" not in st.session_state:
+    st.session_state.cost_val = 3.0
 
-if "last_processed_bytes" not in st.session_state:
-    st.session_state.last_processed_bytes = None
+# 1. Purchase Cost Section with Re-Added Quick Increment Buttons
+st.markdown("**Purchase Cost ($):**")
+st.session_state.cost_val = st.number_input(
+    "Purchase Cost ($):", 
+    min_value=0.0, 
+    value=st.session_state.cost_val, 
+    step=0.5, 
+    label_visibility="collapsed"
+)
 
-# Input for Purchase Cost
-cost = st.number_input("Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5)
+btn_col1, btn_col2 = st.columns(2)
+with btn_col1:
+    if st.button("➕ $1.00", use_container_width=True):
+        st.session_state.cost_val += 1.0
+        st.rerun()
+with btn_col2:
+    if st.button("➖ $1.00", use_container_width=True):
+        st.session_state.cost_val = max(0.0, st.session_state.cost_val - 1.0)
+        st.rerun()
+
+st.write("")
 
 def process_image(img_file):
-    """Auto-orient and compress photos."""
+    """Auto-orient and compress photo."""
     img = Image.open(img_file)
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"):
@@ -129,63 +145,39 @@ def process_image(img_file):
     base64_str = base64.b64encode(bytes_data).decode("utf-8")
     return img, base64_str
 
-# Label
+# 2. Camera Input Section
 st.markdown("**Snap photos of item, tags, or flaws:**")
+camera_photo = st.camera_input("", label_visibility="collapsed")
 
-# Native Mobile Capture / File Upload Trigger
-uploaded_files = st.file_uploader(
-    "📷 Tap to open phone camera or photos", 
-    type=["jpg", "jpeg", "png"], 
-    accept_multiple_files=True,
-    key=f"file_uploader_{st.session_state.camera_key}"
-)
-
-# Process Uploaded Files
-if uploaded_files:
-    for file in uploaded_files:
-        current_bytes = file.getvalue()
-        # Avoid duplicate additions
-        if not any(p["bytes"] == current_bytes for p in st.session_state.captured_photos):
-            processed_img, base64_str = process_image(file)
-            st.session_state.captured_photos.append({
-                "img": processed_img,
-                "base64": base64_str,
-                "bytes": current_bytes
-            })
-
-# In-App Camera Feed
-camera_photo = st.camera_input("", key=f"fuzz_camera_{st.session_state.camera_key}")
-
-# Process In-App Camera Stream
-if camera_photo is not None:
-    current_bytes = camera_photo.getvalue()
-    if current_bytes != st.session_state.last_processed_bytes:
-        processed_img, base64_str = process_image(camera_photo)
+# Store captured photos in rapid-fire session list
+if camera_photo:
+    processed_img, base64_str = process_image(camera_photo)
+    
+    # Avoid duplicate additions from Streamlit automatic rerenders
+    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
         st.session_state.captured_photos.append({
             "img": processed_img,
             "base64": base64_str,
-            "bytes": current_bytes
+            "bytes": camera_photo.getvalue()
         })
-        st.session_state.last_processed_bytes = current_bytes
 
-# Display Gallery of Snapped Photos
+# 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
-    st.markdown(f"**Snapped Photos ({len(st.session_state.captured_photos)}):**")
-    cols = st.columns(min(len(st.session_state.captured_photos), 4))
+    st.markdown(f"**📸 Captured Photos ({len(st.session_state.captured_photos)}):**")
     
+    # Display thumbnails in a 4-column grid
+    cols = st.columns(min(len(st.session_state.captured_photos), 4))
     for idx, photo_data in enumerate(st.session_state.captured_photos):
-        with cols[idx % len(cols)]:
+        with cols[idx % 4]:
             st.image(photo_data["img"], caption=f"Photo {idx+1}", use_container_width=True)
             
     if st.button("🗑️ Clear All Photos", use_container_width=True):
         st.session_state.captured_photos = []
-        st.session_state.last_processed_bytes = None
-        st.session_state.camera_key += 1
         st.rerun()
 
 st.write("")
 
-# Analyze Button
+# 4. Main Analysis CTA Button
 if st.button("🔍 FLIP OR SKIP?", type="primary", use_container_width=True):
     if not st.session_state.captured_photos:
         st.warning("Please snap at least one photo first.")
@@ -207,7 +199,7 @@ if st.button("🔍 FLIP OR SKIP?", type="primary", use_container_width=True):
                 prompt_text = f"""
                 You are the master sourcing advisor for 'Flip or Skip' by FuzzFlips.
                 Analyze the provided photo(s) of this resale item.
-                The item purchase cost is ${cost:.2f}.
+                The item purchase cost is ${st.session_state.cost_val:.2f}.
                 
                 Please structure your response with formatting using these exact section headers:
                 
@@ -218,7 +210,7 @@ if st.button("🔍 FLIP OR SKIP?", type="primary", use_container_width=True):
                 Expected resale price range on eBay, Poshmark, Mercari, or Depop.
                 
                 ### 📈 Projected Net Profit
-                Estimated net profit calculation after accounting for purchase cost (${cost:.2f}) and ~20% for platform fees & shipping costs.
+                Estimated net profit calculation after accounting for purchase cost (${st.session_state.cost_val:.2f}) and ~20% for platform fees & shipping costs.
                 
                 ### 🚦 VERDICT: [FLIP, SKIP, or RISKY]
                 Start with a bold line: "**VERDICT: [FLIP / SKIP / RISKY]**"
