@@ -1,5 +1,7 @@
 import base64
 import io
+import os
+import tempfile
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
@@ -149,113 +151,90 @@ if st.button("➖ $1.00", use_container_width=True, key="cost_minus"):
 cost = st.session_state.item_cost
 st.write("")
 
-# --- FULL-WIDTH HTML5 LIVE CAMERA PREVIEW WITH FIXED SNAP FUNCTION ---
+# --- TRUE BIDIRECTIONAL HTML5 CAMERA COMPONENT SETUP ---
+@st.cache_resource
+def get_camera_component():
+    """Builds a temporary real Streamlit component to guarantee 2-way image transfer."""
+    temp_dir = os.path.join(tempfile.gettempdir(), "fuzzflips_cam")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <!-- Load Streamlit's official communication library -->
+        <script src="https://unpkg.com/streamlit-component-lib@1.3.0/dist/streamlit-component-lib.js"></script>
+        <style>
+            * { box-sizing: border-box; }
+            body { margin: 0; padding: 0; background-color: #0E1117; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; }
+            .cam-container { position: relative; width: 100%; height: 420px; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #008A3C; }
+            video { width: 100%; height: 100%; object-fit: cover; }
+            canvas { display: none; }
+            .snap-btn { margin-top: 10px; width: 100%; background-color: #FF6600; color: white; border: none; padding: 16px; font-size: 1.2rem; font-weight: 800; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3); touch-action: manipulation; }
+            .snap-btn:active { background-color: #E05500; transform: scale(0.98); }
+        </style>
+    </head>
+    <body>
+        <div class="cam-container">
+            <video id="video" autoplay playsinline muted></video>
+        </div>
+        <button class="snap-btn" id="snap" type="button">📸 TAKE PHOTO</button>
+        <canvas id="canvas"></canvas>
+
+        <script>
+            // 1. Initialize Streamlit Connection
+            function onRender(event) {
+                Streamlit.setFrameHeight(500);
+            }
+            Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
+            Streamlit.setComponentReady();
+
+            // 2. Setup Camera
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const snapButton = document.getElementById('snap');
+
+            navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: "environment" } },
+                audio: false
+            }).then(stream => {
+                video.srcObject = stream;
+            }).catch(err => {
+                console.error("Camera access error:", err);
+            });
+
+            // 3. Snap and Send Data
+            snapButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                canvas.width = video.videoWidth || 1280;
+                canvas.height = video.videoHeight || 1280;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+                
+                // This officially pushes the image back to Python
+                Streamlit.setComponentValue(dataURL);
+            });
+        </script>
+    </body>
+    </html>
+    """
+    
+    # Write the component out
+    with open(os.path.join(temp_dir, "index.html"), "w") as f:
+        f.write(html_content)
+        
+    return components.declare_component("fuzzflips_cam", path=temp_dir)
+
+# Initialize the custom camera
+fuzzflips_camera = get_camera_component()
+
 st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
 
-camera_html = """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #0E1117;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-        .cam-container {
-            position: relative;
-            width: 100%;
-            height: 420px;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 2px solid #008A3C;
-        }
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        canvas {
-            display: none;
-        }
-        .snap-btn {
-            margin-top: 10px;
-            width: 100%;
-            background-color: #FF6600;
-            color: white;
-            border: none;
-            padding: 16px;
-            font-size: 1.2rem;
-            font-weight: 800;
-            border-radius: 12px;
-            cursor: pointer;
-            box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3);
-            touch-action: manipulation;
-        }
-        .snap-btn:active {
-            background-color: #E05500;
-            transform: scale(0.98);
-        }
-    </style>
-</head>
-<body>
-    <div class="cam-container">
-        <video id="video" autoplay playsinline muted></video>
-    </div>
-    <button class="snap-btn" id="snap" type="button">📸 TAKE PHOTO</button>
-    <canvas id="canvas"></canvas>
-
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const snapButton = document.getElementById('snap');
-
-        // Request environment (rear) mobile camera stream
-        navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 1280 } },
-            audio: false
-        })
-        .then(stream => {
-            video.srcObject = stream;
-        })
-        .catch(err => {
-            console.error("Camera access error:", err);
-        });
-
-        // Fail-safe Streamlit event communication bridge
-        snapButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            
-            canvas.width = video.videoWidth || 1280;
-            canvas.height = video.videoHeight || 1280;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const dataURL = canvas.toDataURL('image/jpeg', 0.85);
-            
-            // Send payload to Streamlit frame wrapper
-            window.parent.postMessage({
-                isStreamlitMessage: true,
-                type: "streamlit:setComponentValue",
-                value: dataURL
-            }, "*");
-        });
-    </script>
-</body>
-</html>
-"""
-
-# Render custom full-width camera viewfinder component
-camera_data = components.html(camera_html, height=500)
+# Render it and capture the returned image base64!
+camera_data = fuzzflips_camera(key="main_cam")
 
 # Process photo when snapped
 if camera_data:
