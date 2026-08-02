@@ -1,6 +1,5 @@
 import base64
 import io
-import json
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
@@ -114,8 +113,12 @@ with btn_col2:
 
 st.write("")
 
-def process_base64_image(b64_str):
-    """Process incoming camera snapshots directly."""
+def process_base64_image(raw_input):
+    """Safely extract base64 data regardless of input structure."""
+    if isinstance(raw_input, dict):
+        raw_input = raw_input.get("value", "")
+    
+    b64_str = str(raw_input)
     if "," in b64_str:
         b64_str = b64_str.split(",")[1]
     
@@ -257,7 +260,7 @@ custom_camera_html = """
             
             const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
             
-            // Post value directly to Streamlit
+            // Send back to Streamlit
             window.parent.postMessage({
                 type: 'streamlit:setComponentValue',
                 value: dataUrl
@@ -275,16 +278,19 @@ camera_data = components.html(custom_camera_html, height=440)
 
 # Process photo when snapped
 if camera_data:
-    processed_img, clean_b64, raw_bytes = process_base64_image(camera_data)
-    
-    # Avoid duplicate additions
-    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != raw_bytes:
-        st.session_state.captured_photos.append({
-            "img": processed_img,
-            "base64": clean_b64,
-            "bytes": raw_bytes
-        })
-        st.rerun()
+    try:
+        processed_img, clean_b64, raw_bytes = process_base64_image(camera_data)
+        
+        # Avoid duplicate additions
+        if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != raw_bytes:
+            st.session_state.captured_photos.append({
+                "img": processed_img,
+                "base64": clean_b64,
+                "bytes": raw_bytes
+            })
+            st.rerun()
+    except Exception as e:
+        st.error(f"Error processing photo: {e}")
 
 # 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
