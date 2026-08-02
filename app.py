@@ -1,5 +1,27 @@
 import streamlit as st
 st.set_page_config(layout="wide")
+st.markdown(
+    """
+    <style>
+    /* Remove mobile side margins */
+    .block-container {
+        padding-left: 0.2rem !important;
+        padding-right: 0.2rem !important;
+        padding-top: 1rem !important;
+    }
+
+    /* Force the camera container and video stream to fill maximum height */
+    div[data-testid="stCameraInput"] {
+        width: 100% !important;
+    }
+    div[data-testid="stCameraInput"] video {
+        min-height: 420px !important;
+        object-fit: cover !important;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
 import anthropic
 import base64
 
