@@ -1,5 +1,6 @@
-import base64
+base64
 import io
+import json
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
@@ -12,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Brand Theme
+# 2. Custom CSS for FuzzFlips Theme & Giant Touch Controls
 st.markdown("""
     <style>
     /* Generous top padding to clear Streamlit's header navigation */
@@ -29,9 +30,9 @@ st.markdown("""
         border: none !important;
         font-weight: 800 !important;
         font-size: 1.2rem !important;
-        border-radius: 10px !important;
-        padding: 0.7rem 1rem !important;
-        box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3) !important;
+        border-radius: 12px !important;
+        padding: 0.8rem 1rem !important;
+        box-shadow: 0 4px 12px rgba(255, 102, 0, 0.4) !important;
     }
     div.stButton > button[kind="primary"]:hover {
         background-color: #E05500 !important;
@@ -66,6 +67,14 @@ st.markdown("""
         font-weight: 500;
     }
 
+    /* Section Labels */
+    .fuzz-label {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #FFFFFF;
+        margin-bottom: 0.4rem;
+    }
+
     /* Mobile text spacing */
     .stMarkdown p, .stMarkdown li {
         font-size: 0.95rem !important;
@@ -90,64 +99,181 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 # Initialize Anthropic Client
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Initialize session state gallery for photos
+# Initialize session state gallery and cost
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
-# Input for Purchase Cost
-cost = st.number_input("Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5)
+if "item_cost" not in st.session_state:
+    st.session_state.item_cost = 3.00
 
-def process_image(img_file):
-    """Auto-orient and compress photos."""
-    img = Image.open(img_file)
-    img = ImageOps.exif_transpose(img)
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-    img.thumbnail((1200, 1200))
-    
-    buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=85)
-    bytes_data = buffer.getvalue()
-    base64_str = base64.b64encode(bytes_data).decode("utf-8")
-    return img, base64_str
+# --- LARGE TOUCH-FRIENDLY PURCHASE COST CONTROLLER ---
+st.markdown('<div class="fuzz-label">Purchase Cost ($):</div>', unsafe_allow_html=True)
 
-# Native Camera Section
-st.markdown("**Snap photos of item, tags, or flaws:**")
+cost_col1, cost_col2, cost_col3 = st.columns([1.2, 2.2, 1.2])
 
-# Native camera widget via Streamlit camera component with overridden view container
-camera_photo = st.camera_input("", key="main_camera")
+with cost_col1:
+    if st.button("➖ $0.50", use_container_width=True, key="cost_minus"):
+        st.session_state.item_cost = max(0.0, st.session_state.item_cost - 0.50)
+        st.rerun()
 
-# Apply target CSS directly to force stream container expand
-st.markdown("""
+with cost_col2:
+    # Display current cost in a massive, high-visibility styled box
+    st.markdown(
+        f"""
+        <div style="
+            background-color: #1E1E1E; 
+            border: 2px solid #FF6600; 
+            border-radius: 12px; 
+            text-align: center; 
+            padding: 8px; 
+            font-size: 1.8rem; 
+            font-weight: 800; 
+            color: #FFFFFF;
+            letter-spacing: 1px;">
+            ${st.session_state.item_cost:.2f}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with cost_col3:
+    if st.button("➕ $0.50", use_container_width=True, key="cost_plus"):
+        st.session_state.item_cost += 0.50
+        st.rerun()
+
+cost = st.session_state.item_cost
+st.write("")
+
+# --- NATIVE FULL-WIDTH MOBILE HTML5 CAMERA COMPONENT ---
+st.markdown('<div class="fuzz-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
+
+# We use an iframe-based HTML5 component to stream the mobile camera edge-to-edge
+camera_html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-    /* Direct override on camera element iframe and video wrapper */
-    [data-testid="stCameraInput"] {
-        width: 100% !important;
-    }
-    [data-testid="stCameraInput"] > div {
-        width: 100% !important;
-    }
-    [data-testid="stCameraInput"] iframe {
-        width: 100% !important;
-        height: 480px !important;
-        min-height: 480px !important;
-        border-radius: 12px !important;
-        border: 2px solid #008A3C !important;
-    }
+        body {
+            margin: 0;
+            background-color: #0E1117;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: sans-serif;
+        }
+        .cam-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 480px;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #008A3C;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        canvas {
+            display: none;
+        }
+        .snap-btn {
+            margin-top: 12px;
+            width: 100%;
+            max-width: 500px;
+            background-color: #FF6600;
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 1.1rem;
+            font-weight: 800;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3);
+        }
+        .snap-btn:active {
+            background-color: #E05500;
+        }
     </style>
-""", unsafe_allow_html=True)
+</head>
+<body>
+    <div class="cam-container">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+    <button class="snap-btn" id="snap">📸 TAKE PHOTO</button>
+    <canvas id="canvas"></canvas>
 
-# Add snapped photos to gallery
-if camera_photo:
-    processed_img, base64_str = process_image(camera_photo)
-    
-    # Avoid duplicate additions from Streamlit rerenders
-    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
-        st.session_state.captured_photos.append({
-            "img": processed_img,
-            "base64": base64_str,
-            "bytes": camera_photo.getvalue()
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const snapButton = document.getElementById('snap');
+
+        // Request front/back mobile camera stream with vertical preference
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 1280 } },
+            audio: false
         })
+        .then(stream => {
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            console.error("Camera access error:", err);
+            alert("Camera access denied or unavailable.");
+        });
+
+        snapButton.addEventListener('click', () => {
+            canvas.width = video.videoWidth || 1280;
+            canvas.height = video.videoHeight || 1280;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+            
+            // Send captured image data back to Streamlit via parent window communication
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: dataURL
+            }, "*");
+        });
+    </script>
+</body>
+</html>
+"""
+
+# Render custom full-width camera component (height set to 560px to fit preview + giant button)
+camera_data = components.html(camera_html, height=560)
+
+# Capture image transmission from component back to Python session state
+if camera_data:
+    try:
+        # Convert base64 data URL string back to PIL Image
+        header, encoded = camera_data.split(",", 1)
+        binary_data = base64.b64decode(encoded)
+        
+        img = Image.open(io.BytesIO(binary_data))
+        img = ImageOps.exif_transpose(img)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        img.thumbnail((1200, 1200))
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
+        processed_bytes = buffer.getvalue()
+        base64_str = base64.b64encode(processed_bytes).decode("utf-8")
+        
+        # Avoid duplicate additions
+        if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != processed_bytes:
+            st.session_state.captured_photos.append({
+                "img": img,
+                "base64": base64_str,
+                "bytes": processed_bytes
+            })
+            st.rerun()
+    except Exception as e:
+        pass
 
 # Display Gallery of Snapped Photos
 if st.session_state.captured_photos:
