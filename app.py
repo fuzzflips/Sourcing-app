@@ -11,10 +11,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS (Includes forced wide viewfinder transform)
+# 2. CSS Styling with Forced Camera Horizontal Scale
 st.markdown("""
     <style>
-    /* Safe top margin clearing Streamlit's header */
+    /* Safe top margin clearing Streamlit's header completely */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
@@ -42,10 +42,9 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* Force Camera Container to Full Width & Scale Inner Feed */
+    /* Force Camera Viewfinder Full Width via Scale Matrix */
     div[data-testid="stCameraInput"] {
         width: 100% !important;
-        max-width: 100% !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
         overflow: hidden !important;
@@ -55,14 +54,14 @@ st.markdown("""
         width: 100% !important;
     }
 
-    /* Scale up iframe contents to fill side margins */
+    /* Target iframe and force video element to scale out horizontally */
     div[data-testid="stCameraInput"] iframe {
-        width: 120% !important;
-        margin-left: -10% !important;
-        min-height: 380px !important;
+        width: 140% !important;
+        margin-left: -20% !important;
+        height: 380px !important;
     }
 
-    /* Primary CTA Button */
+    /* Primary CTA Button (FuzzFlips Orange) */
     div.stButton > button[kind="primary"] {
         background-color: #FF6600 !important;
         color: #FFFFFF !important;
@@ -77,7 +76,7 @@ st.markdown("""
         background-color: #E05500 !important;
     }
 
-    /* Secondary Quick-Adjust Buttons */
+    /* Secondary Quick-Adjust & Action Buttons */
     div.stButton > button[kind="secondary"] {
         border: 1px solid #008A3C !important;
         color: #008A3C !important;
@@ -103,7 +102,7 @@ if "ANTHROPIC_API_KEY" not in st.secrets:
 
 client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-# Session State Initializations
+# Session State for Photo List & Cost
 if "captured_photos" not in st.session_state:
     st.session_state.captured_photos = []
 
@@ -150,25 +149,23 @@ def process_image(img_file):
 st.markdown("**Snap photos of item, tags, or flaws:**")
 camera_photo = st.camera_input("", label_visibility="collapsed")
 
-# Auto-save snap when user hits "Take Photo"
+# Store captured photos in rapid-fire session list
 if camera_photo:
-    photo_bytes = camera_photo.getvalue()
+    processed_img, base64_str = process_image(camera_photo)
     
-    already_saved = any(p["bytes"] == photo_bytes for p in st.session_state.captured_photos)
-    
-    if not already_saved:
-        processed_img, base64_str = process_image(camera_photo)
+    # Avoid duplicate additions from Streamlit automatic rerenders
+    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != camera_photo.getvalue():
         st.session_state.captured_photos.append({
             "img": processed_img,
             "base64": base64_str,
-            "bytes": photo_bytes
+            "bytes": camera_photo.getvalue()
         })
-        st.success(f"✅ Photo #{len(st.session_state.captured_photos)} added to item!")
 
 # 3. Photo Gallery Preview & Counter
 if st.session_state.captured_photos:
     st.markdown(f"**📸 Captured Photos ({len(st.session_state.captured_photos)}):**")
     
+    # Display thumbnails in a 4-column grid
     cols = st.columns(min(len(st.session_state.captured_photos), 4))
     for idx, photo_data in enumerate(st.session_state.captured_photos):
         with cols[idx % 4]:
