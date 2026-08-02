@@ -11,32 +11,31 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS for FuzzFlips Brand Theme & Forced Camera Dimensions
+# 2. Custom CSS for FuzzFlips Brand Theme & Full-Width Viewfinder
 st.markdown("""
     <style>
-    /* Padding to clear Streamlit's top header bar */
+    /* Generous top padding to clear Streamlit's invisible nav header completely */
     .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
-        padding-top: 3.2rem !important;
+        padding-top: 4.5rem !important;
     }
     
-    /* Force camera container & iframe to expand */
+    /* Force camera input to be 100% full width */
     div[data-testid="stCameraInput"] {
         width: 100% !important;
-        display: flex !important;
-        justify-content: center !important;
     }
-    
+
     div[data-testid="stCameraInput"] > div {
         width: 100% !important;
         max-height: none !important;
     }
 
+    /* Set a clean height for the iframe wrapper */
     div[data-testid="stCameraInput"] iframe {
         width: 100% !important;
-        min-height: 520px !important;
-        height: 60vh !important;
+        height: 420px !important;
+        min-height: 420px !important;
         border-radius: 12px !important;
         border: 2px solid #008A3C !important;
     }
@@ -116,22 +115,11 @@ if "captured_photos" not in st.session_state:
 # Input for Purchase Cost
 cost = st.number_input("Purchase Cost ($):", min_value=0.0, value=3.0, step=0.5)
 
-def process_image(img_file):
-    """Auto-orient and compress photos."""
-    img = Image.open(img_file)
-    img = ImageOps.exif_transpose(img)
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-    img.thumbnail((1200, 1200))
-    
-    buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=85)
-    bytes_data = buffer.getvalue()
-    base64_str = base64.b64encode(bytes_data).decode("utf-8")
-    return img, base64_str
+# Camera section text above camera (prevents side-by-side column compression)
+st.markdown("**Snap photos of item, tags, or flaws:**")
 
-# In-app live camera feed
-camera_photo = st.camera_input("Snap photos of item, tags, or flaws")
+# In-app live camera feed (Pass empty label string "")
+camera_photo = st.camera_input("")
 
 # Add snapped photos to gallery
 if camera_photo:
