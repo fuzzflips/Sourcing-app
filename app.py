@@ -1,11 +1,8 @@
 import base64
 import io
-import re
-import os
 import anthropic
 from PIL import Image, ImageOps
 import streamlit as st
-import streamlit.components.v1 as components
 
 # 1. Page Config
 st.set_page_config(
@@ -14,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. FuzzFlips Mobile-Optimized CSS
+# 2. Aggressive Mobile-Optimized CSS
 st.markdown("""
     <style>
     /* Safe margin clearing Streamlit top header */
@@ -45,14 +42,13 @@ st.markdown("""
         font-weight: 500;
     }
 
-    /* MASSIVE Purchase Cost UI */
+    /* --- MASSIVE Purchase Cost UI --- */
     .cost-label {
         font-size: 1.3rem;
         font-weight: 800;
         margin-bottom: 0.2rem;
     }
     
-    /* Enlarge the number input box */
     div[data-testid="stNumberInput"] input {
         font-size: 2.2rem !important;
         font-weight: 900 !important;
@@ -63,7 +59,6 @@ st.markdown("""
         border: 2px solid #008A3C !important;
     }
 
-    /* Enlarge the Quick-Adjust Secondary Buttons */
     div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
         height: 4.5rem !important;
         font-size: 1.4rem !important;
@@ -78,6 +73,40 @@ st.markdown("""
         background-color: #008A3C !important;
     }
 
+    /* --- FORCE NATIVE CAMERA TO BE JUMBO --- */
+    /* Target the main container */
+    [data-testid="stCameraInput"] {
+        width: 100% !important;
+        background-color: #0d1117 !important;
+        border-radius: 12px !important;
+        border: 2px solid #008A3C !important;
+        overflow: hidden !important;
+        padding: 0 !important;
+    }
+    
+    /* Target the actual video feed to stretch edge-to-edge */
+    [data-testid="stCameraInput"] video {
+        width: 100vw !important;
+        min-height: 450px !important;
+        object-fit: cover !important; 
+    }
+    
+    /* Style the native "Take Photo" button to match our theme */
+    [data-testid="stCameraInput"] button {
+        background-color: #FF6600 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: 800 !important;
+        font-size: 1.2rem !important;
+        border-radius: 0px 0px 10px 10px !important;
+        padding: 1rem !important;
+        width: 100% !important;
+        text-transform: uppercase !important;
+    }
+    [data-testid="stCameraInput"] button:hover {
+        background-color: #E05500 !important;
+    }
+
     /* Primary CTA Button (FuzzFlips Orange) */
     div.stButton > button[kind="primary"] {
         background-color: #FF6600 !important;
@@ -88,6 +117,7 @@ st.markdown("""
         border-radius: 10px !important;
         padding: 1rem !important;
         box-shadow: 0 4px 10px rgba(255, 102, 0, 0.35) !important;
+        margin-top: 10px !important;
     }
     div.stButton > button[kind="primary"]:hover {
         background-color: #E05500 !important;
@@ -117,9 +147,6 @@ if "captured_photos" not in st.session_state:
 if "cost_val" not in st.session_state:
     st.session_state.cost_val = 3.0
 
-if "last_processed_ts" not in st.session_state:
-    st.session_state.last_processed_ts = None
-
 # --- 1. JUMBO PURCHASE COST SECTION ---
 st.markdown('<div class="cost-label">Purchase Cost ($):</div>', unsafe_allow_html=True)
 st.session_state.cost_val = st.number_input(
@@ -142,147 +169,9 @@ with btn_col2:
 
 st.write("")
 
-# --- 2. THE ULTIMATE FULL-WIDTH CAMERA COMPONENT ---
-# Safely build the component in the trusted app directory so Streamlit Cloud doesn't block it
-COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fuzzflips_cam_widget")
-os.makedirs(COMPONENT_DIR, exist_ok=True)
-HTML_PATH = os.path.join(COMPONENT_DIR, "index.html")
-
-html_content = """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit-component-lib.js"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: transparent; font-family: -apple-system, sans-serif; overflow: hidden; margin: 0; }
-        
-        .cam-box {
-            position: relative;
-            width: 100%;
-            height: 420px;
-            background: #0d1117;
-            border-radius: 12px;
-            border: 2px solid #008A3C;
-            overflow: hidden;
-        }
-        
-        video { width: 100%; height: 100%; object-fit: cover; display: block; }
-        
-        .controls {
-            position: absolute; bottom: 12px; left: 0; width: 100%;
-            display: flex; justify-content: center; align-items: center; gap: 10px; padding: 0 16px; z-index: 10;
-        }
-        
-        .snap-btn {
-            flex: 1; padding: 14px 0; background: #FF6600; color: #FFF; border: none; 
-            font-size: 1.15rem; font-weight: 800; border-radius: 8px; cursor: pointer; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5); text-transform: uppercase;
-        }
-        .snap-btn:active { background: #E05500; transform: scale(0.98); }
-        
-        .flip-btn {
-            background: rgba(0,0,0,0.65); border: 1px solid #008A3C; color: #FFF; 
-            padding: 14px 18px; font-size: 1.2rem; border-radius: 8px; font-weight: 700; cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <div class="cam-box">
-        <!-- playsinline is crucial so iOS doesn't open full screen media player -->
-        <video id="webcam" autoplay playsinline muted></video>
-        <div class="controls">
-            <button class="snap-btn" id="snapBtn">📷 TAKE PHOTO</button>
-            <button class="flip-btn" id="flipBtn">🔄</button>
-        </div>
-        <canvas id="canvas" style="display:none;"></canvas>
-    </div>
-
-    <script>
-        let currentStream = null;
-        let useFront = false;
-
-        async function startCamera() {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-            const constraints = {
-                video: { facingMode: useFront ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: false
-            };
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-                const video = document.getElementById('webcam');
-                video.srcObject = currentStream;
-                video.play();
-            } catch (err) {
-                console.error("Camera access failed:", err);
-            }
-        }
-
-        document.getElementById('flipBtn').addEventListener('click', () => {
-            useFront = !useFront;
-            startCamera();
-        });
-
-        document.getElementById('snapBtn').addEventListener('click', () => {
-            const video = document.getElementById('webcam');
-            const canvas = document.getElementById('canvas');
-            if (!video || !video.videoWidth) return;
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-            
-            // Officially tell Streamlit the value changed
-            Streamlit.setComponentValue({
-                image: dataUrl,
-                ts: Date.now()
-            });
-        });
-
-        function onRender(event) {
-            Streamlit.setFrameHeight(430);
-        }
-
-        Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
-        Streamlit.setComponentReady();
-        startCamera();
-    </script>
-</body>
-</html>
-"""
-
-# Write HTML file and declare the component
-with open(HTML_PATH, "w", encoding="utf-8") as f:
-    f.write(html_content)
-
-st.markdown("**Snap photos of item, tags, or flaws:**")
-fuzzflips_cam = components.declare_component("fuzzflips_cam", path=COMPONENT_DIR)
-camera_data = fuzzflips_cam(key="live_cam")
-
-def process_base64_payload(raw_input):
-    """Safely decode base64 strings."""
-    if not raw_input or not isinstance(raw_input, dict):
-        return None, None, None, None
-        
-    b64_str = raw_input.get("image", "")
-    ts = raw_input.get("ts", None)
-    
-    if "base64," in b64_str:
-        b64_str = b64_str.split("base64,")[-1]
-
-    b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', b64_str)
-    missing_padding = len(b64_str) % 4
-    if missing_padding:
-        b64_str += "=" * (4 - missing_padding)
-
-    img_bytes = base64.b64decode(b64_str)
-    img = Image.open(io.BytesIO(img_bytes))
+def process_native_photo(img_file):
+    """Auto-orient, resize, and convert native camera payload."""
+    img = Image.open(img_file)
     img = ImageOps.exif_transpose(img)
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
@@ -292,22 +181,23 @@ def process_base64_payload(raw_input):
     img.save(buffer, format="JPEG", quality=85)
     bytes_data = buffer.getvalue()
     clean_b64 = base64.b64encode(bytes_data).decode("utf-8")
-    return img, clean_b64, bytes_data, ts
+    return img, clean_b64, bytes_data
 
-# Handle Incoming Photos natively
-if camera_data:
-    try:
-        proc_img, clean_b64, raw_bytes, ts = process_base64_payload(camera_data)
-        if proc_img and ts and ts != st.session_state.last_processed_ts:
-            st.session_state.last_processed_ts = ts
-            st.session_state.captured_photos.append({
-                "img": proc_img,
-                "base64": clean_b64,
-                "bytes": raw_bytes
-            })
-            st.rerun()
-    except Exception as e:
-        pass
+# --- 2. NATIVE CAMERA (STYLED MASSIVE) ---
+st.markdown('<div class="cost-label">Snap photos of item, tags, or flaws:</div>', unsafe_allow_html=True)
+camera_photo = st.camera_input("Take Photo", label_visibility="collapsed", key="live_cam")
+
+if camera_photo:
+    proc_img, clean_b64, raw_bytes = process_native_photo(camera_photo)
+    
+    # Prevent duplicate saves on rerun
+    if not st.session_state.captured_photos or st.session_state.captured_photos[-1]["bytes"] != raw_bytes:
+        st.session_state.captured_photos.append({
+            "img": proc_img,
+            "base64": clean_b64,
+            "bytes": raw_bytes
+        })
+        # Note: We do not need st.rerun() here, Streamlit natively handles the state update!
 
 # --- 3. GALLERY PREVIEW & COUNTER ---
 if st.session_state.captured_photos:
@@ -320,7 +210,6 @@ if st.session_state.captured_photos:
             
     if st.button("🗑️ Clear All Photos", use_container_width=True):
         st.session_state.captured_photos = []
-        st.session_state.last_processed_ts = None
         st.rerun()
 
 st.write("")
