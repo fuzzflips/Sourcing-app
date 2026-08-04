@@ -128,7 +128,7 @@ st.markdown("""
 # App Header
 st.markdown("""
     <div class="fuzz-title">
-        <span class="fuzz-orange">FLIP</span> <span class="fuzz-green">OR SKIP$</span>
+        <span class="fuzz-orange">FLIP</span> <span class="fuzz-green">OR</span> <span class="fuzz-orange">SKIP</span>
     </div>
     <div class="fuzz-subtitle">Powered by FuzzFlips AI Sourcing Companion</div>
 """, unsafe_allow_html=True)
@@ -197,7 +197,6 @@ if camera_photo:
             "base64": clean_b64,
             "bytes": raw_bytes
         })
-        # Note: We do not need st.rerun() here, Streamlit natively handles the state update!
 
 # --- 3. GALLERY PREVIEW & COUNTER ---
 if st.session_state.captured_photos:
