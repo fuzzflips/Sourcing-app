@@ -96,8 +96,8 @@ else:
         st.markdown("### Current Batch")
         st.image(st.session_state.image_queue, width=150)
         
-        # --- Purchase Price Input ---
-        purchase_price = st.number_input("What is the asking price? ($)", min_value=0.00, value=0.00, step=0.50, format="%.2f")
+        # --- Purchase Price Input (Updated step and wording) ---
+        purchase_price = st.number_input("Purchase Price ($)", min_value=0.00, value=0.00, step=1.00, format="%.2f")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -120,7 +120,7 @@ else:
                         # --- STRICT JSON PROMPT WITH PURCHASE PRICE ---
                         prompt = f"""
                         You are an expert resale sourcing assistant. Look at the provided image(s) and analyze the item in deep detail.
-                        The asking price to purchase this item is ${purchase_price:.2f}.
+                        The purchase price for this item is ${purchase_price:.2f}.
                         
                         You must respond ONLY with a raw JSON object. Do not include markdown formatting, code blocks, or conversational text.
                         
@@ -130,7 +130,7 @@ else:
                           "category": "Choose exactly one: Clothing, Footwear, Collectibles, or Other",
                           "estimated_profit": "A realistic dollar range for NET profit (after subtracting the ${purchase_price:.2f} cost of goods and standard platform fees)",
                           "verdict": "FLIP or SKIP",
-                          "analysis": "Provide a comprehensive, highly detailed breakdown of the item. Discuss the brand's reputation, visible condition, market demand, likely sell-through rate, comparable sales data, and your step-by-step reasoning for the valuation. Specifically explain how the ${purchase_price:.2f} asking price factors into your final FLIP or SKIP verdict."
+                          "analysis": "Provide a comprehensive, highly detailed breakdown of the item. Discuss the brand's reputation, visible condition, market demand, likely sell-through rate, comparable sales data, and your step-by-step reasoning for the valuation. Specifically explain how the ${purchase_price:.2f} purchase price factors into your final FLIP or SKIP verdict."
                         }}
                         """
                         content_block.append({"type": "text", "text": prompt})
