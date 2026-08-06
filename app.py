@@ -74,76 +74,89 @@ else:
 
     st.write("Scan clothing, footwear, or collectibles to analyze market value and estimated profit.")
 
-   # --- SCANNER INTERFACE ---
+  # --- SCANNER INTERFACE ---
+    # 1. Create a "memory bank" for our images so they survive reruns
+    if 'image_queue' not in st.session_state:
+        st.session_state.image_queue = []
+
     camera_photo = st.camera_input("Camera")
     uploaded_files = st.file_uploader("Or upload from camera roll", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
 
-    # Combine any inputs into a single list
-    images_to_process = []
+    # 2. Safely add camera photos to the queue without duplicating
     if camera_photo:
-        images_to_process.append(camera_photo)
-    if uploaded_files:
-        images_to_process.extend(uploaded_files)
+        is_duplicate = any(img.getvalue() == camera_photo.getvalue() for img in st.session_state.image_queue)
+        if not is_duplicate:
+            st.session_state.image_queue.append(camera_photo)
 
-    if images_to_process:
-        # Display thumbnails of all selected images side-by-side
-        st.image(images_to_process, width=150)
+    # 3. Safely add uploaded files to the queue without duplicating
+    if uploaded_files:
+        for file in uploaded_files:
+            is_duplicate = any(img.getvalue() == file.getvalue() for img in st.session_state.image_queue)
+            if not is_duplicate:
+                st.session_state.image_queue.append(file)
+
+    # 4. Display the queue and action buttons
+    if st.session_state.image_queue:
+        st.markdown("### Current Batch")
+        st.image(st.session_state.image_queue, width=150)
         
-        if st.button("FLIP OR SKIP?", type="primary", use_container_width=True):
-            with st.spinner("Analyzing market data..."):
-                try:
-                    # 1. Prepare ALL images for Anthropic Claude
-                    content_block = []
-                    for img in images_to_process:
-                        encoded_image = base64.b64encode(img.getvalue()).decode("utf-8")
-                        content_block.append({
-                            "type": "image", 
-                            "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}
-                        })
-                    
-                    # Add the text prompt at the end
-                    prompt = """
-                    You are an expert resale sourcing assistant. Look at the provided image(s) and tell me:
-                    1. A short description of the item.
-                    2. Estimated resale value range.
-                    3. Final verdict: FLIP or SKIP.
-                    Keep it brief and punchy.
-                    """
-                    content_block.append({"type": "text", "text": prompt})
-                    
-                    # 2. Call the AI
-                    message = client.messages.create(
-                        model="claude-3-5-sonnet-20240620",
-                        max_tokens=300,
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": content_block
-                            }
-                        ]
-                    )
-                    
-                    ai_response = message.content[0].text
-                    
-                    # 3. Display Results
-                    st.markdown("### AI Verdict")
-                    st.info(ai_response)
-                    
-                    # 4. Save to Cloud Database
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Clear Batch", use_container_width=True):
+                st.session_state.image_queue = []
+                st.rerun()
+                
+        with col2:
+            if st.button("FLIP OR SKIP?", type="primary", use_container_width=True):
+                with st.spinner("Analyzing market data..."):
                     try:
-                        supabase.table('scans').insert({
-                            "user_id": st.session_state.user.id,
-                            "item_name": "Field Scan", 
-                            "category": "Uncategorized",
-                            "ai_analysis": ai_response
-                        }).execute()
-                        st.success("✅ Scan securely saved to your cloud history!")
-                    except Exception as db_error:
-                        st.error(f"Failed to save to database: {str(db_error)}")
+                        # Prepare ALL images in the cart for Anthropic Claude
+                        content_block = []
+                        for img in st.session_state.image_queue:
+                            encoded_image = base64.b64encode(img.getvalue()).decode("utf-8")
+                            content_block.append({
+                                "type": "image", 
+                                "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}
+                            })
                         
-                except Exception as ai_error:
-                    st.error(f"AI Analysis failed: {str(ai_error)}")
-    
+                        prompt = """
+                        You are an expert resale sourcing assistant. Look at the provided image(s) and tell me:
+                        1. A short description of the item.
+                        2. Estimated resale value range.
+                        3. Final verdict: FLIP or SKIP.
+                        Keep it brief and punchy.
+                        """
+                        content_block.append({"type": "text", "text": prompt})
+                        
+                        message = client.messages.create(
+                            model="claude-3-5-sonnet-20240620",
+                            max_tokens=300,
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": content_block
+                                }
+                            ]
+                        )
+                        
+                        ai_response = message.content[0].text
+                        
+                        st.markdown("### AI Verdict")
+                        st.info(ai_response)
+                        
+                        try:
+                            supabase.table('scans').insert({
+                                "user_id": st.session_state.user.id,
+                                "item_name": "Field Scan", 
+                                "category": "Uncategorized",
+                                "ai_analysis": ai_response
+                            }).execute()
+                            st.success("✅ Scan securely saved to your cloud history!")
+                        except Exception as db_error:
+                            st.error(f"Failed to save to database: {str(db_error)}")
+                            
+                    except Exception as ai_error:
+                        st.error(f"AI Analysis failed: {str(ai_error)}")
     st.divider()
     
     # --- SCAN HISTORY VIEWER ---
