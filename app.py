@@ -96,6 +96,9 @@ else:
         st.markdown("### Current Batch")
         st.image(st.session_state.image_queue, width=150)
         
+        # --- Purchase Price Input ---
+        purchase_price = st.number_input("What is the asking price? ($)", min_value=0.00, value=0.00, step=0.50, format="%.2f")
+        
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Clear Batch", use_container_width=True):
@@ -114,25 +117,27 @@ else:
                                 "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}
                             })
                         
-                        # --- STRICT JSON PROMPT ---
-                        prompt = """
-                        You are an expert resale sourcing assistant. Look at the provided image(s) and analyze the item.
+                        # --- STRICT JSON PROMPT WITH PURCHASE PRICE ---
+                        prompt = f"""
+                        You are an expert resale sourcing assistant. Look at the provided image(s) and analyze the item in deep detail.
+                        The asking price to purchase this item is ${purchase_price:.2f}.
+                        
                         You must respond ONLY with a raw JSON object. Do not include markdown formatting, code blocks, or conversational text.
                         
                         Use this exact JSON structure:
-                        {
-                          "item_name": "A short, precise title for the item",
+                        {{
+                          "item_name": "A precise and descriptive title for the item",
                           "category": "Choose exactly one: Clothing, Footwear, Collectibles, or Other",
-                          "estimated_profit": "A dollar range (e.g. $20 - $35)",
+                          "estimated_profit": "A realistic dollar range for NET profit (after subtracting the ${purchase_price:.2f} cost of goods and standard platform fees)",
                           "verdict": "FLIP or SKIP",
-                          "analysis": "A brief 1-2 sentence explanation of your verdict based on condition and brand."
-                        }
+                          "analysis": "Provide a comprehensive, highly detailed breakdown of the item. Discuss the brand's reputation, visible condition, market demand, likely sell-through rate, comparable sales data, and your step-by-step reasoning for the valuation. Specifically explain how the ${purchase_price:.2f} asking price factors into your final FLIP or SKIP verdict."
+                        }}
                         """
                         content_block.append({"type": "text", "text": prompt})
                         
                         message = client.messages.create(
-                           model="claude-sonnet-5",
-                            max_tokens=300,
+                            model="claude-sonnet-5",
+                            max_tokens=1500,
                             messages=[
                                 {
                                     "role": "user",
@@ -164,6 +169,7 @@ else:
                                 "ai_analysis": ai_data['analysis']
                             }).execute()
                             st.success("✅ Scan securely saved to your cloud history!")
+                            st.session_state.image_queue = [] # Auto-clear queue after successful scan
                         except Exception as db_error:
                             st.error(f"Failed to save to database: {str(db_error)}")
                             
