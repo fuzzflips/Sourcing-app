@@ -24,7 +24,7 @@ def init_supabase() -> Client:
 try:
     supabase = init_supabase()
 except Exception as e:
-    st.error("Failed to connect to Database. Please check your secrets.")
+    st.error(f"Database Connection Error: {str(e)}")
     st.stop()
 
 # 3. Aggressive Mobile-Optimized CSS
