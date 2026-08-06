@@ -131,7 +131,7 @@ else:
                         content_block.append({"type": "text", "text": prompt})
                         
                         message = client.messages.create(
-                           model="claude-5-sonnet-latest",
+                           model="claude-sonnet-5",
                             max_tokens=300,
                             messages=[
                                 {
