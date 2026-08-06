@@ -138,8 +138,8 @@ else:
         st.markdown("### Current Batch")
         st.image(st.session_state.image_queue, width=150)
         
-        # --- RESTORED PURCHASE PRICE INPUT ---
-        purchase_price = st.number_input("Purchase Price ($)", min_value=0.00, value=0.00, step=1.00, format="%.2f")
+        # --- PURCHASE PRICE INPUT ---
+        purchase_price = st.number_input("Purchase Price ($)", min_value=0.00, value=0.00, step=1.00, format="%.2f", key="purchase_price_input")
         
         col1, col2 = st.columns(2)
         with col1:
