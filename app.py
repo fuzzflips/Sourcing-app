@@ -137,103 +137,108 @@ else:
     if st.session_state.image_queue:
         st.markdown("### Current Batch")
         st.image(st.session_state.image_queue, width=150)
-        
-        # --- PURCHASE PRICE INPUT ---
-        purchase_price = st.number_input("Purchase Price ($)", min_value=0.00, value=0.00, step=1.00, format="%.2f", key="purchase_price_input")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Clear Batch", use_container_width=True):
-                st.session_state.image_queue = []
-                st.rerun()
-                
-        with col2:
-            if st.button("FLIP OR SKIP?", type="primary", use_container_width=True):
-                with st.spinner("Analyzing market data & calculating fees..."):
+
+    # --- PURCHASE PRICE & ACTIONS (Always Visible) ---
+    purchase_price = st.number_input("Purchase Price ($)", min_value=0.00, value=0.00, step=1.00, format="%.2f", key="purchase_price_input")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Clear Batch", use_container_width=True):
+            st.session_state.image_queue = []
+            st.rerun()
+            
+    with col2:
+        scan_triggered = st.button("FLIP OR SKIP?", type="primary", use_container_width=True)
+
+    if scan_triggered:
+        if not st.session_state.image_queue:
+            st.warning("Please take a photo or upload an image before analyzing!")
+        else:
+            with st.spinner("Analyzing market data & calculating fees..."):
+                try:
+                    content_block = []
+                    for img in st.session_state.image_queue:
+                        encoded_image = base64.b64encode(img.getvalue()).decode("utf-8")
+                        content_block.append({
+                            "type": "image", 
+                            "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}
+                        })
+                    
+                    # --- STRICT JSON PROMPT WITH PLATFORM FEE BREAKDOWN FIELDS ---
+                    prompt = f"""
+                    You are an expert resale sourcing assistant. Look at the provided image(s) and analyze the item in deep detail.
+                    The purchase price for this item is {purchase_price:.2f} dollars.
+                    The user primarily sells on these platforms: {user_platforms_str}. Factor the specific seller fees, commission structures, and buyer behaviors of these platforms into your calculations.
+                    
+                    You must respond ONLY with a raw JSON object. Do not include markdown formatting outside the JSON, code blocks, or conversational text.
+                    
+                    Use this exact JSON structure:
+                    {{
+                      "item_name": "A precise and descriptive title for the item",
+                      "category": "Choose exactly one: Clothing, Footwear, Collectibles, or Other",
+                      "estimated_gross_sale": "Estimated market resale value as a dollar string (e.g., '$75.00')",
+                      "estimated_fees": "Estimated platform commission and processing fees for {user_platforms_str} as a dollar string (e.g., '$10.50')",
+                      "estimated_profit": "Realistic net profit after subtracting cost of goods ({purchase_price:.2f} dollars) and estimated fees, as a dollar string (e.g., '$64.50')",
+                      "verdict": "FLIP or SKIP",
+                      "analysis": "Provide a comprehensive breakdown of the item using clear Markdown formatting. Use '###' headings (e.g., ### Product Overview, ### Market Demand, ### Platform Strategy & Fee Breakdown, ### Final Verdict) and bullet points to organize the information. Discuss how this item performs specifically across {user_platforms_str}. IMPORTANT: You must use line breaks (\\\\n\\\\n) to space out your sections so it is highly readable. CRITICAL RULE: NEVER use the dollar sign symbol ($) anywhere in your analysis or strings. Streamlit will mistakenly render it as a LaTeX math equation and destroy the text formatting. Always type out the word 'dollars' instead or avoid the symbol entirely in your text values."
+                    }}
+                    """
+                    content_block.append({"type": "text", "text": prompt})
+                    
+                    message = client.messages.create(
+                        model="claude-sonnet-5",
+                        max_tokens=1500,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": content_block
+                            }
+                        ]
+                    )
+                    
+                    raw_response = message.content[0].text
+                    cleaned_response = raw_response.replace("```json", "").replace("```", "").strip()
+                    ai_data = json.loads(cleaned_response)
+                    
+                    # --- DISPLAY RESULTS WITH FEE BREAKDOWN UI ---
+                    st.markdown(f"### Verdict: {ai_data['verdict']}")
+                    st.write(f"**Item:** {ai_data['item_name']} | **Category:** {ai_data['category']}")
+                    st.divider()
+                    
+                    # Metric Cards for Financial Breakdown
+                    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+                    with m_col1:
+                        st.metric("Cost of Goods", f"${purchase_price:.2f}")
+                    with m_col2:
+                        st.metric("Est. Gross Sale", ai_data.get('estimated_gross_sale', 'N/A'))
+                    with m_col3:
+                        st.metric("Est. Platform Fees", ai_data.get('estimated_fees', 'N/A'))
+                    with m_col4:
+                        st.metric("Est. Net Profit", ai_data.get('estimated_profit', 'N/A'))
+                        
+                    st.caption(f"Calculations optimized for your active platforms: {user_platforms_str}")
+                    st.divider()
+                    
+                    st.markdown(ai_data['analysis'])
+                    
+                    # Save structured data to Cloud Database
                     try:
-                        content_block = []
-                        for img in st.session_state.image_queue:
-                            encoded_image = base64.b64encode(img.getvalue()).decode("utf-8")
-                            content_block.append({
-                                "type": "image", 
-                                "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}
-                            })
+                        supabase.table('scans').insert({
+                            "user_id": st.session_state.user.id,
+                            "item_name": ai_data['item_name'], 
+                            "category": ai_data['category'],
+                            "estimated_profit": ai_data['estimated_profit'],
+                            "ai_analysis": ai_data['analysis']
+                        }).execute()
+                        st.success("✅ Scan securely saved to your cloud history!")
+                        st.session_state.image_queue = [] 
+                    except Exception as db_error:
+                        st.error(f"Failed to save to database: {str(db_error)}")
                         
-                        # --- STRICT JSON PROMPT WITH PLATFORM FEE BREAKDOWN FIELDS ---
-                        prompt = f"""
-                        You are an expert resale sourcing assistant. Look at the provided image(s) and analyze the item in deep detail.
-                        The purchase price for this item is {purchase_price:.2f} dollars.
-                        The user primarily sells on these platforms: {user_platforms_str}. Factor the specific seller fees, commission structures, and buyer behaviors of these platforms into your calculations.
-                        
-                        You must respond ONLY with a raw JSON object. Do not include markdown formatting outside the JSON, code blocks, or conversational text.
-                        
-                        Use this exact JSON structure:
-                        {{
-                          "item_name": "A precise and descriptive title for the item",
-                          "category": "Choose exactly one: Clothing, Footwear, Collectibles, or Other",
-                          "estimated_gross_sale": "Estimated market resale value as a dollar string (e.g., '$75.00')",
-                          "estimated_fees": "Estimated platform commission and processing fees for {user_platforms_str} as a dollar string (e.g., '$10.50')",
-                          "estimated_profit": "Realistic net profit after subtracting cost of goods ({purchase_price:.2f} dollars) and estimated fees, as a dollar string (e.g., '$64.50')",
-                          "verdict": "FLIP or SKIP",
-                          "analysis": "Provide a comprehensive breakdown of the item using clear Markdown formatting. Use '###' headings (e.g., ### Product Overview, ### Market Demand, ### Platform Strategy & Fee Breakdown, ### Final Verdict) and bullet points to organize the information. Discuss how this item performs specifically across {user_platforms_str}. IMPORTANT: You must use line breaks (\\\\n\\\\n) to space out your sections so it is highly readable. CRITICAL RULE: NEVER use the dollar sign symbol ($) anywhere in your analysis or strings. Streamlit will mistakenly render it as a LaTeX math equation and destroy the text formatting. Always type out the word 'dollars' instead or avoid the symbol entirely in your text values."
-                        }}
-                        """
-                        content_block.append({"type": "text", "text": prompt})
-                        
-                        message = client.messages.create(
-                            model="claude-sonnet-5",
-                            max_tokens=1500,
-                            messages=[
-                                {
-                                    "role": "user",
-                                    "content": content_block
-                                }
-                            ]
-                        )
-                        
-                        raw_response = message.content[0].text
-                        cleaned_response = raw_response.replace("```json", "").replace("```", "").strip()
-                        ai_data = json.loads(cleaned_response)
-                        
-                        # --- DISPLAY RESULTS WITH FEE BREAKDOWN UI ---
-                        st.markdown(f"### Verdict: {ai_data['verdict']}")
-                        st.write(f"**Item:** {ai_data['item_name']} | **Category:** {ai_data['category']}")
-                        st.divider()
-                        
-                        # Metric Cards for Financial Breakdown
-                        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-                        with m_col1:
-                            st.metric("Cost of Goods", f"${purchase_price:.2f}")
-                        with m_col2:
-                            st.metric("Est. Gross Sale", ai_data.get('estimated_gross_sale', 'N/A'))
-                        with m_col3:
-                            st.metric("Est. Platform Fees", ai_data.get('estimated_fees', 'N/A'))
-                        with m_col4:
-                            st.metric("Est. Net Profit", ai_data.get('estimated_profit', 'N/A'))
-                            
-                        st.caption(f"Calculations optimized for your active platforms: {user_platforms_str}")
-                        st.divider()
-                        
-                        st.markdown(ai_data['analysis'])
-                        
-                        # Save structured data to Cloud Database
-                        try:
-                            supabase.table('scans').insert({
-                                "user_id": st.session_state.user.id,
-                                "item_name": ai_data['item_name'], 
-                                "category": ai_data['category'],
-                                "estimated_profit": ai_data['estimated_profit'],
-                                "ai_analysis": ai_data['analysis']
-                            }).execute()
-                            st.success("✅ Scan securely saved to your cloud history!")
-                            st.session_state.image_queue = [] 
-                        except Exception as db_error:
-                            st.error(f"Failed to save to database: {str(db_error)}")
-                            
-                    except json.JSONDecodeError:
-                        st.error("The AI failed to format the data correctly. Please try scanning again.")
-                    except Exception as ai_error:
-                        st.error(f"Analysis failed: {str(ai_error)}")
+                except json.JSONDecodeError:
+                    st.error("The AI failed to format the data correctly. Please try scanning again.")
+                except Exception as ai_error:
+                    st.error(f"Analysis failed: {str(ai_error)}")
     
     st.divider()
     
