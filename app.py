@@ -131,7 +131,7 @@ else:
                         content_block.append({"type": "text", "text": prompt})
                         
                         message = client.messages.create(
-                           model="claude-3-haiku-20240307",
+                           model="claude-5-sonnet-latest",
                             max_tokens=300,
                             messages=[
                                 {
