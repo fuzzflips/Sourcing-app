@@ -26,6 +26,24 @@ client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 # --- SESSION STATE MANAGEMENT ---
 if 'user' not in st.session_state:
     st.session_state.user = None
+if 'user_profile' not in st.session_state:
+    st.session_state.user_profile = None
+
+def load_or_create_user_profile(user_id):
+    try:
+        # Try fetching existing profile
+        res = supabase.table('profiles').select('*').eq('id', user_id).execute()
+        if res.data and len(res.data) > 0:
+            return res.data[0]
+        else:
+            # If no profile exists, create a default one
+            default_platforms = ["eBay"]
+            new_profile = {"id": user_id, "platforms": default_platforms}
+            supabase.table('profiles').insert(new_profile).execute()
+            return new_profile
+    except Exception as e:
+        # Fallback if database call fails
+        return {"platforms": ["eBay"]}
 
 
 # ==========================================
@@ -53,6 +71,7 @@ if st.session_state.user is None:
             try:
                 res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 st.session_state.user = res.user
+                st.session_state.user_profile = load_or_create_user_profile(res.user.id)
                 st.rerun()
             except Exception as e:
                 st.error(f"Login failed: {str(e)}")
@@ -62,17 +81,44 @@ if st.session_state.user is None:
 #             MAIN APPLICATION
 # ==========================================
 else:
+    # Ensure profile is loaded if session state lost it on reload
+    if st.session_state.user_profile is None:
+        st.session_state.user_profile = load_or_create_user_profile(st.session_state.user.id)
+
     # Header & Logout 
-    col1, col2 = st.columns([8, 2])
-    with col1:
+    col_h1, col_h2 = st.columns([8, 2])
+    with col_h1:
         st.markdown("<h2 style='color: #ff5722; font-style: italic; margin-top: -15px;'>FLIP <span style='color: #4CAF50;'>OR</span> SKIP</h2>", unsafe_allow_html=True)
-    with col2:
+    with col_h2:
         if st.button("Logout"):
             supabase.auth.sign_out()
             st.session_state.user = None
+            st.session_state.user_profile = None
             st.rerun()
 
-    st.write("Scan clothing, footwear, or collectibles to analyze market value and estimated profit.")
+    # --- PROFILE / PLATFORM SETTINGS EXPANDER ---
+    with st.expander("⚙️ Seller Profile & Platform Settings"):
+        st.write("Select your primary selling platforms so the AI tailors its profit math and fee structures accordingly.")
+        
+        current_platforms = st.session_state.user_profile.get("platforms", ["eBay"])
+        
+        selected_platforms = st.multiselect(
+            "Active Reselling Platforms",
+            ["eBay", "Poshmark", "Mercari", "Whatnot", "Depop", "Local Marketplace"],
+            default=current_platforms
+        )
+        
+        if st.button("Save Platform Preferences"):
+            try:
+                supabase.table('profiles').update({"platforms": selected_platforms}).eq('id', st.session_state.user.id).execute()
+                st.session_state.user_profile["platforms"] = selected_platforms
+                st.success("Platform preferences saved to your profile!")
+            except Exception as update_err:
+                st.error(f"Failed to save preferences: {str(update_err)}")
+
+    user_platforms_str = ", ".join(st.session_state.user_profile.get("platforms", ["eBay"]))
+    st.write(f"*Active Sourcing Profile:* Tailored for **{user_platforms_str}**.")
+    st.divider()
 
     # --- SCANNER INTERFACE ---
     if 'image_queue' not in st.session_state:
@@ -117,10 +163,11 @@ else:
                                 "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}
                             })
                         
-                        # --- STRICT JSON PROMPT WITH PURCHASE PRICE ---
+                        # --- STRICT JSON PROMPT WITH PLATFORM PROFILE ---
                         prompt = f"""
                         You are an expert resale sourcing assistant. Look at the provided image(s) and analyze the item in deep detail.
                         The purchase price for this item is {purchase_price:.2f} dollars.
+                        The user primarily sells on these platforms: {user_platforms_str}. Factor the specific seller fees, commission structures, and buyer behaviors of these platforms into your net profit calculations.
                         
                         You must respond ONLY with a raw JSON object. Do not include markdown formatting outside the JSON, code blocks, or conversational text.
                         
@@ -128,9 +175,9 @@ else:
                         {{
                           "item_name": "A precise and descriptive title for the item",
                           "category": "Choose exactly one: Clothing, Footwear, Collectibles, or Other",
-                          "estimated_profit": "A realistic dollar range for NET profit (after subtracting the {purchase_price:.2f} cost of goods and standard platform fees)",
+                          "estimated_profit": "A realistic dollar range for NET profit (after subtracting the {purchase_price:.2f} cost of goods and platform fees for {user_platforms_str})",
                           "verdict": "FLIP or SKIP",
-                          "analysis": "Provide a comprehensive, highly detailed breakdown of the item using clear Markdown formatting. Use '###' headings (e.g., ### Product Overview, ### Market Demand, ### Profit Breakdown, ### Final Verdict) and bullet points to organize the information. IMPORTANT: You must use line breaks (\\\\n\\\\n) to space out your sections so it is highly readable. CRITICAL RULE: NEVER use the dollar sign symbol ($) anywhere in your analysis. Streamlit will mistakenly render it as a LaTeX math equation and destroy the text formatting. Always type out the word 'dollars' instead."
+                          "analysis": "Provide a comprehensive, highly detailed breakdown of the item using clear Markdown formatting. Use '###' headings (e.g., ### Product Overview, ### Market Demand, ### Platform Strategy & Fee Breakdown, ### Final Verdict) and bullet points to organize the information. Discuss how this item performs specifically across {user_platforms_str}. IMPORTANT: You must use line breaks (\\\\n\\\\n) to space out your sections so it is highly readable. CRITICAL RULE: NEVER use the dollar sign symbol ($) anywhere in your analysis. Streamlit will mistakenly render it as a LaTeX math equation and destroy the text formatting. Always type out the word 'dollars' instead."
                         }}
                         """
                         content_block.append({"type": "text", "text": prompt})
@@ -153,7 +200,7 @@ else:
                         # Parse the JSON
                         ai_data = json.loads(cleaned_response)
                         
-                        # Display Results nicely in the UI without compressing them in an info box
+                        # Display Results nicely in the UI
                         st.markdown(f"### Verdict: {ai_data['verdict']}")
                         st.write(f"**Item:** {ai_data['item_name']} | **Category:** {ai_data['category']}")
                         st.write(f"**Estimated Profit:** {ai_data['estimated_profit']}")
