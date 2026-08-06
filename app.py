@@ -74,39 +74,51 @@ else:
 
     st.write("Scan clothing, footwear, or collectibles to analyze market value and estimated profit.")
 
-    # --- SCANNER INTERFACE ---
-    image_file = st.camera_input("Camera")
-    if not image_file:
-        image_file = st.file_uploader("Or upload from camera roll", type=['png', 'jpg', 'jpeg'])
+   # --- SCANNER INTERFACE ---
+    camera_photo = st.camera_input("Camera")
+    uploaded_files = st.file_uploader("Or upload from camera roll", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
 
-    if image_file:
-        st.image(image_file, caption="Ready for Analysis")
+    # Combine any inputs into a single list
+    images_to_process = []
+    if camera_photo:
+        images_to_process.append(camera_photo)
+    if uploaded_files:
+        images_to_process.extend(uploaded_files)
+
+    if images_to_process:
+        # Display thumbnails of all selected images side-by-side
+        st.image(images_to_process, width=150)
         
         if st.button("FLIP OR SKIP?", type="primary", use_container_width=True):
             with st.spinner("Analyzing market data..."):
                 try:
-                    # 1. Prepare image for Anthropic Claude
-                    encoded_image = base64.b64encode(image_file.getvalue()).decode("utf-8")
+                    # 1. Prepare ALL images for Anthropic Claude
+                    content_block = []
+                    for img in images_to_process:
+                        encoded_image = base64.b64encode(img.getvalue()).decode("utf-8")
+                        content_block.append({
+                            "type": "image", 
+                            "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}
+                        })
                     
-                    # 2. Call the AI
+                    # Add the text prompt at the end
                     prompt = """
-                    You are an expert resale sourcing assistant. Look at this item and tell me:
+                    You are an expert resale sourcing assistant. Look at the provided image(s) and tell me:
                     1. A short description of the item.
                     2. Estimated resale value range.
                     3. Final verdict: FLIP or SKIP.
                     Keep it brief and punchy.
                     """
+                    content_block.append({"type": "text", "text": prompt})
                     
+                    # 2. Call the AI
                     message = client.messages.create(
                         model="claude-3-5-sonnet-20240620",
                         max_tokens=300,
                         messages=[
                             {
                                 "role": "user",
-                                "content": [
-                                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded_image}},
-                                    {"type": "text", "text": prompt}
-                                ]
+                                "content": content_block
                             }
                         ]
                     )
