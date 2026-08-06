@@ -192,7 +192,7 @@ else:
     """, unsafe_allow_html=True)
 
     # Logout Button
-    if st.button("Logout", size="small"):
+    if st.button("Logout"):
         supabase.auth.sign_out()
         st.session_state.user = None
         st.session_state.captured_photos = []
